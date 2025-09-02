@@ -41,6 +41,7 @@ if defined ENV_FILE (
 echo.
 echo 🎯 启动服务...
 echo 📍 服务地址: http://localhost:%PORT%
+echo 📖 Roo CDOE 基础URL: http://localhost:%PORT%/v1
 echo 📖 API文档: http://localhost:%PORT%/docs
 echo 📊 Dashboard: http://localhost:%PORT%/dashboard
 echo.

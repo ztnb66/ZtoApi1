@@ -42,6 +42,7 @@ fi
 echo ""
 echo "🎯 启动服务..."
 echo "📍 服务地址: http://localhost:${PORT:-9090}"
+echo "📍 Roo CDOE 基础URL: http://localhost:${PORT:-9090}/v1"
 echo "📖 API文档: http://localhost:${PORT:-9090}/docs"
 echo "📊 Dashboard: http://localhost:${PORT:-9090}/dashboard"
 echo ""
