@@ -30,7 +30,7 @@ fi
 TARGET_PORT=${PORT:-9090}
 echo "🔍 检查端口 $TARGET_PORT 是否被占用..."
 
-# 检查端口是否被占用并获取进程ID
+# # 检查端口是否被占用并获取进程ID
 PID=$(lsof -t -i:$TARGET_PORT)
 
 if [ -n "$PID" ]; then
@@ -54,6 +54,7 @@ echo "🤖 模型名称: ${MODEL_NAME:-GLM-4.5}"
 echo "🌐 端口: $TARGET_PORT"
 echo "🐛 调试模式: ${DEBUG_MODE:-true}"
 echo "🌊 默认流式: ${DEFAULT_STREAM:-true}"
+echo "🧠 思考功能: ${ENABLE_THINKING:-false}"
 
 if [ -n "$ZAI_TOKEN" ] && [ "$ZAI_TOKEN" != "your_z_ai_token_here" ]; then
     echo "✅ Z.ai Token: 已配置"
