@@ -99,7 +99,7 @@
    - 连接你的GitHub仓库
    - 选择Docker作为环境
    - 设置以下环境变量：
-   - `ZAI_TOKEN`: Z.ai 的访问令牌 (可选，不提供将使用匿名token)
+   - `ZAI_TOKEN`: Z.ai 的访问令牌 (可选，不提供将自动获取随机匿名token)
    - `DEFAULT_KEY`: 客户端API密钥 (可选，默认: sk-your-key)
    - `MODEL_NAME`: 显示的模型名称 (可选，默认: GLM-4.5)
    - `PORT`: 服务监听端口 (Render会自动设置)
@@ -162,7 +162,7 @@ docker run -p 9090:9090 \
 
 | 变量名 | 说明 | 默认值 | 示例 |
 |--------|------|--------|------|
-| `ZAI_TOKEN` | Z.ai 访问令牌 | 空（使用匿名token） | `eyJhbGciOiJFUzI1NiIs...` |
+| `ZAI_TOKEN` | Z.ai 访问令牌 | 空（自动获取随机匿名token） | `eyJhbGciOiJFUzI1NiIs...` |
 
 #### ⚙️ 可选配置
 
@@ -217,7 +217,7 @@ nano .env.local
 
 #### 方法3：匿名Token
 
-本项目支持自动获取匿名token，无需手动配置。当 `ANON_TOKEN_ENABLED` 常量为 `true` 时，系统会自动为每次对话获取不同的匿名token，避免共享记忆。
+本项目支持自动获取匿名token，无需手动配置。当 `ZAI_TOKEN` 环境变量未设置时，系统会自动为每次对话获取不同的随机匿名token，避免共享记忆。这种机制使得项目即使用户没有提供 Z.ai 的访问令牌也能正常工作。
 
 ### 🎯 使用示例
 
@@ -311,7 +311,7 @@ Ctrl+C
 2. **配置文件**: 建议将 `.env.local` 添加到 `.gitignore`
 3. **权限设置**: 确保启动脚本有执行权限 (`chmod +x start.sh`)
 4. **端口冲突**: 确保配置的端口没有被其他服务占用
-5. **匿名Token**: 使用匿名token时，每次对话都会有独立的上下文
+5. **匿名Token**: 当未设置 `ZAI_TOKEN` 时，系统会自动获取随机匿名token，每次对话都会有独立的上下文，无需手动配置即可使用
 6. **思考过程**: 项目会自动处理模型的思考过程，可通过 `THINK_TAGS_MODE` 常量调整显示方式
 
 ## 📖 API使用示例
