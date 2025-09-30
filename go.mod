@@ -1,4 +1,4 @@
-module z2api
+module github.com/libaxuan/ZtoApi
 
 go 1.23.0
 

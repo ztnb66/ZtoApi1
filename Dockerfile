@@ -14,7 +14,7 @@ COPY --from=builder /app/main .
 
 # Labels
 LABEL maintainer="ZtoApi Contributors"
-LABEL description="ZAI to GLM-4.5 API"
+LABEL description="ZAI to GLM-4.6 API"
 LABEL version="1.0.0"
 
 # Expose port

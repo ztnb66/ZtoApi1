@@ -17,23 +17,23 @@ import (
 
 // 配置变量（从环境变量读取）
 var (
-	UPSTREAM_URL     string
-	DEFAULT_KEY      string
-	ZAI_TOKEN   string
-	MODEL_NAME       string
-	PORT             string
-	DEBUG_MODE       bool
-	DEFAULT_STREAM   bool
+	UPSTREAM_URL      string
+	DEFAULT_KEY       string
+	ZAI_TOKEN         string
+	MODEL_NAME        string
+	PORT              string
+	DEBUG_MODE        bool
+	DEFAULT_STREAM    bool
 	DASHBOARD_ENABLED bool
-	ENABLE_THINKING  bool
+	ENABLE_THINKING   bool
 )
 
 // 请求统计信息
 type RequestStats struct {
-	TotalRequests    int64
-	SuccessfulRequests int64
-	FailedRequests   int64
-	LastRequestTime  time.Time
+	TotalRequests       int64
+	SuccessfulRequests  int64
+	FailedRequests      int64
+	LastRequestTime     time.Time
 	AverageResponseTime time.Duration
 }
 
@@ -50,15 +50,24 @@ type LiveRequest struct {
 
 // 全局变量
 var (
-	stats          RequestStats
-	liveRequests   = []LiveRequest{} // 初始化为空数组，而不是 nil
-	statsMutex     sync.Mutex
-	requestsMutex  sync.Mutex
+	stats         RequestStats
+	liveRequests  = []LiveRequest{} // 初始化为空数组，而不是 nil
+	statsMutex    sync.Mutex
+	requestsMutex sync.Mutex
 )
 
 // 思考内容处理策略
 const (
 	THINK_TAGS_MODE = "strip" // strip: 去除<details>标签；think: 转为<think>标签；raw: 保留原样
+)
+
+// 系统配置常量
+const (
+	MAX_LIVE_REQUESTS     = 100 // 最多保留的实时请求记录数
+	AUTH_TOKEN_TIMEOUT    = 10  // 获取匿名token的超时时间（秒）
+	UPSTREAM_TIMEOUT      = 60  // 上游API调用超时时间（秒）
+	TOKEN_DISPLAY_LENGTH  = 10  // token显示时的截取长度
+	NANOSECONDS_TO_SECONDS = 1000000000 // 纳秒转秒的倍数
 )
 
 // 伪装前端头部（来自抓包）
@@ -76,10 +85,15 @@ const ANON_TOKEN_ENABLED = true
 
 // 从环境变量初始化配置
 func initConfig() {
+	// 加载 .env.local 文件（如果存在）
+	loadEnvFile(".env.local")
+	// 也尝试加载标准的 .env 文件
+	loadEnvFile(".env")
+	
 	UPSTREAM_URL = getEnv("UPSTREAM_URL", "https://chat.z.ai/api/chat/completions")
 	DEFAULT_KEY = getEnv("DEFAULT_KEY", "sk-your-key")
 	ZAI_TOKEN = getEnv("ZAI_TOKEN", "")
-	MODEL_NAME = getEnv("MODEL_NAME", "GLM-4.5")
+	MODEL_NAME = getEnv("MODEL_NAME", "GLM-4.6")
 	PORT = getEnv("PORT", "9090")
 
 	// 处理PORT格式，确保有冒号前缀
@@ -135,8 +149,8 @@ func addLiveRequest(method, path string, status int, duration time.Duration, _, 
 
 	liveRequests = append(liveRequests, request)
 
-	// 只保留最近的100条请求
-	if len(liveRequests) > 100 {
+	// 只保留最近的请求记录
+	if len(liveRequests) > MAX_LIVE_REQUESTS {
 		liveRequests = liveRequests[1:]
 	}
 }
@@ -177,6 +191,36 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
+// 加载 .env 文件
+func loadEnvFile(filename string) {
+	file, err := os.Open(filename)
+	if err != nil {
+		// 文件不存在时不报错，这样 .env.local 是可选的
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		// 跳过空行和注释行
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		
+		// 解析 KEY=VALUE 格式
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			// 只有当环境变量未设置时才从文件加载
+			if os.Getenv(key) == "" {
+				os.Setenv(key, value)
+			}
+		}
+	}
+}
+
 // 获取客户端IP地址
 func getClientIP(r *http.Request) string {
 	// 检查X-Forwarded-For头
@@ -203,12 +247,12 @@ func getClientIP(r *http.Request) string {
 
 // OpenAI 请求结构
 type OpenAIRequest struct {
-	Model        string    `json:"model"`
-	Messages     []Message `json:"messages"`
-	Stream       bool      `json:"stream,omitempty"`
-	Temperature  float64   `json:"temperature,omitempty"`
-	MaxTokens    int       `json:"max_tokens,omitempty"`
-	EnableThinking *bool    `json:"enable_thinking,omitempty"`
+	Model          string    `json:"model"`
+	Messages       []Message `json:"messages"`
+	Stream         bool      `json:"stream,omitempty"`
+	Temperature    float64   `json:"temperature,omitempty"`
+	MaxTokens      int       `json:"max_tokens,omitempty"`
+	EnableThinking *bool     `json:"enable_thinking,omitempty"`
 }
 
 type Message struct {
@@ -305,9 +349,45 @@ func debugLog(format string, args ...interface{}) {
 	}
 }
 
+// 转换思考内容的通用函数
+func transformThinkingContent(s string) string {
+	// 去除 <summary>…</summary>
+	s = regexp.MustCompile(`(?s)<summary>.*?</summary>`).ReplaceAllString(s, "")
+	// 清理残留自定义标签，如 </thinking>、<Full> 等
+	s = strings.ReplaceAll(s, "</thinking>", "")
+	s = strings.ReplaceAll(s, "<Full>", "")
+	s = strings.ReplaceAll(s, "</Full>", "")
+	s = strings.TrimSpace(s)
+	
+	switch THINK_TAGS_MODE {
+	case "think":
+		s = regexp.MustCompile(`<details[^>]*>`).ReplaceAllString(s, "<think>")
+		s = strings.ReplaceAll(s, "</details>", "</think>")
+	case "strip":
+		s = regexp.MustCompile(`<details[^>]*>`).ReplaceAllString(s, "")
+		s = strings.ReplaceAll(s, "</details>", "")
+	}
+	
+	// 处理每行前缀 "> "（包括起始位置）
+	s = strings.TrimPrefix(s, "> ")
+	s = strings.ReplaceAll(s, "\n> ", "\n")
+	return strings.TrimSpace(s)
+}
+
+// 根据模型名称获取上游实际模型ID
+func getUpstreamModelID(modelName string) string {
+	switch modelName {
+	case "GLM-4.6":
+		return "GLM-4-6-API-V1" // 使用官方API的真实模型名称
+	default:
+		debugLog("未知模型名称: %s，使用GLM-4.6作为默认", modelName)
+		return "GLM-4-6-API-V1" // 默认使用GLM-4.6
+	}
+}
+
 // 获取匿名token（每次对话使用不同token，避免共享记忆）
 func getAnonymousToken() (string, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: AUTH_TOKEN_TIMEOUT * time.Second}
 	req, err := http.NewRequest("GET", ORIGIN_BASE+"/api/v1/auths/", nil)
 	if err != nil {
 		return "", err
@@ -364,6 +444,12 @@ func main() {
 	log.Printf("OpenAI兼容API服务器启动在端口%s", PORT)
 	log.Printf("模型: %s", MODEL_NAME)
 	log.Printf("上游: %s", UPSTREAM_URL)
+	log.Printf("API密钥: %s", func() string {
+		if len(DEFAULT_KEY) > TOKEN_DISPLAY_LENGTH {
+			return DEFAULT_KEY[:TOKEN_DISPLAY_LENGTH] + "..."
+		}
+		return DEFAULT_KEY
+	}())
 	log.Printf("Debug模式: %v", DEBUG_MODE)
 	log.Printf("默认流式响应: %v", DEFAULT_STREAM)
 	log.Printf("Dashboard启用: %v", DASHBOARD_ENABLED)
@@ -379,8 +465,8 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 简单的HTML模板
-	tmpl := `<!DOCTYPE html>
+	// 动态HTML模板，使用当前配置的模型名称
+	tmpl := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -433,7 +519,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
             margin-top: 30px;
         }
         .requests-table {
-            width: 100%;
+            width: 100%%;
             border-collapse: collapse;
         }
         .requests-table th, .requests-table td {
@@ -636,7 +722,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 
                 row.innerHTML =
                    "<td>" + timeStr + "</td>" +
-                   "<td>GLM-4.5</td>" +
+                   "<td>%s</td>" +
                    "<td>" + (request.method || "undefined") + "</td>" +
                    "<td class=\"" + statusClass + "\">" + (request.status || "undefined") + "</td>" +
                    "<td>" + ((request.duration / 1000).toFixed(2) || "undefined") + "s</td>" +
@@ -741,7 +827,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
         setInterval(updateRequests, 5000);
     </script>
 </body>
-</html>`
+</html>`, MODEL_NAME)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, tmpl)
@@ -767,8 +853,8 @@ func handleAPIDocs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// API文档HTML模板
-	tmpl := `<!DOCTYPE html>
+	// 动态API文档HTML模板，使用当前配置的模型名称
+	tmpl := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -839,7 +925,7 @@ func handleAPIDocs(w http.ResponseWriter, r *http.Request) {
             margin: 15px 0;
         }
         table {
-            width: 100%;
+            width: 100%%;
             border-collapse: collapse;
             margin: 15px 0;
         }
@@ -949,7 +1035,7 @@ func handleAPIDocs(w http.ResponseWriter, r *http.Request) {
 
         <section id="overview">
             <h2>概述</h2>
-            <p>这是一个为Z.ai GLM-4.5模型提供OpenAI兼容API接口的代理服务器。它允许你使用标准的OpenAI API格式与Z.ai的GLM-4.5模型进行交互，支持流式和非流式响应。</p>
+            <p>这是一个为Z.ai %s模型提供OpenAI兼容API接口的代理服务器。它允许你使用标准的OpenAI API格式与Z.ai的%s模型进行交互，支持流式和非流式响应。</p>
             <p><strong>基础URL:</strong> <code>http://localhost:9090/v1</code></p>
             <div class="note">
                 <strong>注意:</strong> 默认端口为9090，可以通过环境变量PORT进行修改。
@@ -985,7 +1071,7 @@ Authorization: Bearer your-api-key</div>
   "object": "list",
   "data": [
     {
-      "id": "GLM-4.5",
+      "id": "%s",
       "object": "model",
       "created": 1756788845,
       "owned_by": "z.ai"
@@ -1019,7 +1105,7 @@ Authorization: Bearer your-api-key</div>
                                 <td>model</td>
                                 <td>string</td>
                                 <td>是</td>
-                                <td>要使用的模型ID，例如 "GLM-4.5"</td>
+                                <td>要使用的模型ID，例如 "%s"</td>
                             </tr>
                             <tr>
                                 <td>messages</td>
@@ -1103,7 +1189,7 @@ client = openai.OpenAI(
 
 # 非流式请求
 response = client.chat.completions.create(
-    model="GLM-4.5",
+    model="%s",
     messages=[{"role": "user", "content": "你好，请介绍一下自己"}]
 )
 
@@ -1111,7 +1197,7 @@ print(response.choices[0].message.content)
 
 # 流式请求
 response = client.chat.completions.create(
-    model="GLM-4.5",
+    model="%s",
     messages=[{"role": "user", "content": "请写一首关于春天的诗"}],
     stream=True
 )
@@ -1129,7 +1215,7 @@ curl -X POST http://localhost:9090/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
   -d '{
-    "model": "GLM-4.5",
+    "model": "GLM-4.6",
     "messages": [{"role": "user", "content": "你好"}],
     "stream": false
   }'
@@ -1139,7 +1225,7 @@ curl -X POST http://localhost:9090/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
   -d '{
-    "model": "GLM-4.5",
+    "model": "GLM-4.6",
     "messages": [{"role": "user", "content": "你好"}],
     "stream": true
   }'</div>
@@ -1149,7 +1235,7 @@ curl -X POST http://localhost:9090/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
   -d '{
-    "model": "GLM-4.5",
+    "model": "GLM-4.6",
     "messages": [{"role": "user", "content": "请分析一下这个问题"}],
     "enable_thinking": true
   }'
@@ -1168,7 +1254,7 @@ async function chatWithGLM(message, stream = false) {
       'Authorization': 'Bearer your-api-key'
     },
     body: JSON.stringify({
-      model: 'GLM-4.5',
+      model: '%s',
       messages: [{ role: 'user', content: message }],
       stream: stream
     })
@@ -1269,7 +1355,7 @@ chatWithGLM('你好，请介绍一下JavaScript', false);</div>
         }
     </script>
 </body>
-</html>`
+</html>`, MODEL_NAME, MODEL_NAME, MODEL_NAME, MODEL_NAME, MODEL_NAME, MODEL_NAME, MODEL_NAME)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, tmpl)
@@ -1302,7 +1388,7 @@ func handleModels(w http.ResponseWriter, r *http.Request) {
 		Object: "list",
 		Data: []Model{
 			{
-				ID:      MODEL_NAME,
+				ID:      "GLM-4.6",
 				Object:  "model",
 				Created: time.Now().Unix(),
 				OwnedBy: "z.ai",
@@ -1403,7 +1489,7 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		Stream:   true, // 总是使用流式从上游获取
 		ChatID:   chatID,
 		ID:       msgID,
-		Model:    "0727-360B-API", // 上游实际模型ID
+		Model:    getUpstreamModelID(MODEL_NAME), // 根据模型名称获取上游实际模型ID
 		Messages: req.Messages,
 		Params:   map[string]interface{}{},
 		Features: map[string]interface{}{
@@ -1418,7 +1504,7 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			ID      string `json:"id"`
 			Name    string `json:"name"`
 			OwnedBy string `json:"owned_by"`
-		}{ID: "0727-360B-API", Name: "GLM-4.5", OwnedBy: "openai"},
+		}{ID: getUpstreamModelID(MODEL_NAME), Name: MODEL_NAME, OwnedBy: "openai"},
 		ToolServers: []string{},
 		Variables: map[string]string{
 			"{{USER_NAME}}":        "User",
@@ -1433,8 +1519,8 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		if t, err := getAnonymousToken(); err == nil {
 			authToken = t
 			debugLog("匿名token获取成功: %s...", func() string {
-				if len(t) > 10 {
-					return t[:10]
+				if len(t) > TOKEN_DISPLAY_LENGTH {
+					return t[:TOKEN_DISPLAY_LENGTH]
 				}
 				return t
 			}())
@@ -1479,7 +1565,7 @@ func callUpstreamWithHeaders(upstreamReq UpstreamRequest, refererChatID string, 
 	req.Header.Set("Origin", ORIGIN_BASE)
 	req.Header.Set("Referer", ORIGIN_BASE+"/c/"+refererChatID)
 
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{Timeout: UPSTREAM_TIMEOUT * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		debugLog("上游请求失败: %v", err)
@@ -1520,28 +1606,7 @@ func handleStreamResponseWithIDs(w http.ResponseWriter, upstreamReq UpstreamRequ
 		return
 	}
 
-	// 用于策略2：总是展示thinking（配合标签处理）
-	transformThinking := func(s string) string {
-		// 去 <summary>…</summary>
-		s = regexp.MustCompile(`(?s)<summary>.*?</summary>`).ReplaceAllString(s, "")
-		// 清理残留自定义标签，如 </thinking>、<Full> 等
-		s = strings.ReplaceAll(s, "</thinking>", "")
-		s = strings.ReplaceAll(s, "<Full>", "")
-		s = strings.ReplaceAll(s, "</Full>", "")
-		s = strings.TrimSpace(s)
-		switch THINK_TAGS_MODE {
-		case "think":
-			s = regexp.MustCompile(`<details[^>]*>`).ReplaceAllString(s, "<think>")
-			s = strings.ReplaceAll(s, "</details>", "</think>")
-		case "strip":
-			s = regexp.MustCompile(`<details[^>]*>`).ReplaceAllString(s, "")
-			s = strings.ReplaceAll(s, "</details>", "")
-		}
-		// 处理每行前缀 "> "（包括起始位置）
-		s = strings.TrimPrefix(s, "> ")
-		s = strings.ReplaceAll(s, "\n> ", "\n")
-		return strings.TrimSpace(s)
-	}
+	// 策略2：总是展示thinking + answer
 
 	// 设置SSE头部
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -1627,7 +1692,7 @@ func handleStreamResponseWithIDs(w http.ResponseWriter, upstreamReq UpstreamRequ
 		if upstreamData.Data.DeltaContent != "" {
 			var out = upstreamData.Data.DeltaContent
 			if upstreamData.Data.Phase == "thinking" {
-				out = transformThinking(out)
+				out = transformThinkingContent(out)
 			}
 			if out != "" {
 				debugLog("发送内容(%s): %s", upstreamData.Data.Phase, out)
@@ -1745,25 +1810,7 @@ func handleNonStreamResponseWithIDs(w http.ResponseWriter, upstreamReq UpstreamR
 		if upstreamData.Data.DeltaContent != "" {
 			out := upstreamData.Data.DeltaContent
 			if upstreamData.Data.Phase == "thinking" {
-				out = func(s string) string {
-					// 同步一份转换逻辑（与流式一致）
-					s = regexp.MustCompile(`(?s)<summary>.*?</summary>`).ReplaceAllString(s, "")
-					s = strings.ReplaceAll(s, "</thinking>", "")
-					s = strings.ReplaceAll(s, "<Full>", "")
-					s = strings.ReplaceAll(s, "</Full>", "")
-					s = strings.TrimSpace(s)
-					switch THINK_TAGS_MODE {
-					case "think":
-						s = regexp.MustCompile(`<details[^>]*>`).ReplaceAllString(s, "<think>")
-						s = strings.ReplaceAll(s, "</details>", "</think>")
-					case "strip":
-						s = regexp.MustCompile(`<details[^>]*>`).ReplaceAllString(s, "")
-						s = strings.ReplaceAll(s, "</details>", "")
-					}
-					s = strings.TrimPrefix(s, "> ")
-					s = strings.ReplaceAll(s, "\n> ", "\n")
-					return strings.TrimSpace(s)
-				}(out)
+				out = transformThinkingContent(out)
 			}
 			if out != "" {
 				fullContent.WriteString(out)

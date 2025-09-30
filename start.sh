@@ -3,7 +3,7 @@
 # OpenAI兼容API代理启动脚本
 # 支持从环境变量文件加载配置，添加了端口占用检测功能
 
-echo "🚀 启动 OpenAI兼容API代理 for Z.ai GLM-4.5"
+echo "🚀 启动 OpenAI兼容API代理 for Z.ai GLM-4.6"
 
 # 检查环境变量文件
 ENV_FILE=""
@@ -50,7 +50,7 @@ fi
 
 # 显示关键配置
 echo "🔑 API Key: ${DEFAULT_KEY:-sk-your-key}"
-echo "🤖 模型名称: ${MODEL_NAME:-GLM-4.5}"
+echo "🤖 模型名称: ${MODEL_NAME:-GLM-4.6}"
 echo "🌐 端口: $TARGET_PORT"
 echo "🐛 调试模式: ${DEBUG_MODE:-true}"
 echo "🌊 默认流式: ${DEFAULT_STREAM:-true}"
@@ -65,7 +65,7 @@ fi
 echo ""
 echo "🎯 启动服务..."
 echo "📍 服务地址: http://localhost:$TARGET_PORT"
-echo "📍 Roo CDOE 基础URL: http://localhost:$TARGET_PORT/v1"
+echo "📍 基础URL: http://localhost:$TARGET_PORT/v1"
 echo "📖 API文档: http://localhost:$TARGET_PORT/docs"
 echo "📊 Dashboard: http://localhost:$TARGET_PORT/dashboard"
 echo ""
