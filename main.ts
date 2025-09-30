@@ -746,6 +746,7 @@ const dashboardHTML = `<!DOCTYPE html>
                 <div class="flex space-x-4">
                     <a href="/" class="text-gray-600 hover:text-purple-600 transition">首页</a>
                     <a href="/docs" class="text-gray-600 hover:text-purple-600 transition">文档</a>
+                    <a href="/deploy" class="text-gray-600 hover:text-purple-600 transition">部署</a>
                     <a href="/dashboard" class="text-purple-600 font-semibold">Dashboard</a>
                 </div>
             </div>
@@ -937,6 +938,240 @@ const dashboardHTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
+// Deploy guide HTML
+const deployHTML = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>部署指南 - ZtoApi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <nav class="bg-white shadow-sm border-b">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <a href="/" class="flex items-center space-x-2 text-purple-600 hover:text-purple-700 transition">
+                    <span class="text-2xl">🦕</span>
+                    <span class="text-xl font-bold">ZtoApi</span>
+                </a>
+                <div class="flex space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-purple-600 transition">首页</a>
+                    <a href="/docs" class="text-gray-600 hover:text-purple-600 transition">文档</a>
+                    <a href="/deploy" class="text-purple-600 font-semibold">部署</a>
+                    <a href="/dashboard" class="text-gray-600 hover:text-purple-600 transition">Dashboard</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-8 max-w-5xl">
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-gray-900 mb-3">🚀 Deno Deploy 部署指南</h1>
+            <p class="text-gray-600">快速部署到 Deno Deploy 平台</p>
+        </div>
+
+        <!-- Current Deployment -->
+        <div class="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl p-8 mb-8 text-white">
+            <div class="flex items-center space-x-4 mb-4">
+                <span class="text-4xl">🌐</span>
+                <div>
+                    <h2 class="text-2xl font-bold mb-2">当前部署地址</h2>
+                    <a href="https://zto2api.deno.dev" target="_blank" class="text-white/90 hover:text-white underline text-lg font-mono">
+                        https://zto2api.deno.dev
+                    </a>
+                </div>
+            </div>
+            <p class="text-white/80">✅ 已部署并运行中</p>
+        </div>
+
+        <!-- Quick Start -->
+        <div class="bg-white rounded-xl shadow-sm border p-8 mb-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6 flex items-center">
+                <span class="mr-3">⚡</span> 快速开始
+            </h2>
+            <div class="space-y-4">
+                <div class="flex items-start">
+                    <span class="bg-purple-100 text-purple-700 rounded-full w-8 h-8 flex items-center justify-center font-bold mr-4 flex-shrink-0">1</span>
+                    <div class="flex-1">
+                        <h3 class="font-semibold text-gray-900 mb-2">Fork 仓库</h3>
+                        <p class="text-gray-600">前往 <a href="https://github.com/libaxuan/ZtoApi" target="_blank" class="text-purple-600 hover:underline">GitHub 仓库</a>，点击右上角的 Fork 按钮</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start">
+                    <span class="bg-purple-100 text-purple-700 rounded-full w-8 h-8 flex items-center justify-center font-bold mr-4 flex-shrink-0">2</span>
+                    <div class="flex-1">
+                        <h3 class="font-semibold text-gray-900 mb-2">登录 Deno Deploy</h3>
+                        <p class="text-gray-600 mb-2">访问 <a href="https://dash.deno.com" target="_blank" class="text-purple-600 hover:underline">Deno Deploy</a> 并使用 GitHub 账号登录</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start">
+                    <span class="bg-purple-100 text-purple-700 rounded-full w-8 h-8 flex items-center justify-center font-bold mr-4 flex-shrink-0">3</span>
+                    <div class="flex-1">
+                        <h3 class="font-semibold text-gray-900 mb-2">创建新项目</h3>
+                        <p class="text-gray-600">点击 "New Project"，选择你 Fork 的仓库，入口文件选择 <code class="bg-gray-100 px-2 py-1 rounded font-mono text-sm">main.ts</code></p>
+                    </div>
+                </div>
+
+                <div class="flex items-start">
+                    <span class="bg-purple-100 text-purple-700 rounded-full w-8 h-8 flex items-center justify-center font-bold mr-4 flex-shrink-0">4</span>
+                    <div class="flex-1">
+                        <h3 class="font-semibold text-gray-900 mb-2">配置环境变量</h3>
+                        <p class="text-gray-600">在项目设置中添加必要的环境变量（见下方详细说明）</p>
+                    </div>
+                </div>
+
+                <div class="flex items-start">
+                    <span class="bg-purple-100 text-purple-700 rounded-full w-8 h-8 flex items-center justify-center font-bold mr-4 flex-shrink-0">5</span>
+                    <div class="flex-1">
+                        <h3 class="font-semibold text-gray-900 mb-2">部署完成！</h3>
+                        <p class="text-gray-600">Deno Deploy 会自动部署，几秒钟后即可访问</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Environment Variables -->
+        <div class="bg-white rounded-xl shadow-sm border p-8 mb-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6 flex items-center">
+                <span class="mr-3">🔐</span> 环境变量配置
+            </h2>
+
+            <div class="space-y-6">
+                <!-- ZAI_TOKEN -->
+                <div class="border-l-4 border-yellow-400 bg-yellow-50 p-4 rounded-r-lg">
+                    <h3 class="font-bold text-gray-900 mb-2 flex items-center">
+                        <code class="bg-yellow-100 px-2 py-1 rounded mr-2 text-sm">ZAI_TOKEN</code>
+                        <span class="text-yellow-600 text-sm">(可选)</span>
+                    </h3>
+                    <p class="text-gray-700 mb-3">Z.ai 的访问令牌。如不设置，系统会自动获取匿名 token。</p>
+                    <div class="bg-white rounded p-3 mb-2">
+                        <p class="font-semibold text-gray-800 mb-2">获取方式：</p>
+                        <ol class="list-decimal list-inside space-y-1 text-sm text-gray-600">
+                            <li>访问 <a href="https://chat.z.ai" target="_blank" class="text-purple-600 hover:underline">chat.z.ai</a> 并登录</li>
+                            <li>打开浏览器开发者工具（F12）</li>
+                            <li>切换到 Network 标签</li>
+                            <li>发送一条消息</li>
+                            <li>在请求头中找到 <code class="bg-gray-100 px-1 rounded">Authorization: Bearer ...</code></li>
+                            <li>复制 Bearer 后面的 token</li>
+                        </ol>
+                    </div>
+                    <p class="text-sm text-yellow-700">💡 如果使用匿名 token，每次请求都会创建新的会话，不会保留历史记录</p>
+                </div>
+
+                <!-- DEFAULT_KEY -->
+                <div class="border-l-4 border-blue-400 bg-blue-50 p-4 rounded-r-lg">
+                    <h3 class="font-bold text-gray-900 mb-2 flex items-center">
+                        <code class="bg-blue-100 px-2 py-1 rounded mr-2 text-sm">DEFAULT_KEY</code>
+                        <span class="text-blue-600 text-sm">(推荐设置)</span>
+                    </h3>
+                    <p class="text-gray-700 mb-2">客户端调用 API 时需要的密钥。</p>
+                    <div class="bg-white rounded p-3">
+                        <p class="text-sm text-gray-600 mb-1">默认值：<code class="bg-gray-100 px-2 py-1 rounded font-mono">sk-your-key</code></p>
+                        <p class="text-sm text-blue-700">🔒 建议设置为复杂的随机字符串，例如：<code class="bg-gray-100 px-2 py-1 rounded font-mono text-xs">sk-1a2b3c4d5e6f...</code></p>
+                    </div>
+                </div>
+
+                <!-- Other Variables -->
+                <div class="border-l-4 border-gray-400 bg-gray-50 p-4 rounded-r-lg">
+                    <h3 class="font-bold text-gray-900 mb-3">其他可选变量</h3>
+                    <div class="space-y-2 text-sm">
+                        <div class="bg-white rounded p-2">
+                            <code class="text-purple-600 font-mono">MODEL_NAME</code>
+                            <span class="text-gray-600 ml-2">- 模型显示名称（默认：GLM-4.5）</span>
+                        </div>
+                        <div class="bg-white rounded p-2">
+                            <code class="text-purple-600 font-mono">DEBUG_MODE</code>
+                            <span class="text-gray-600 ml-2">- 调试模式（默认：true）</span>
+                        </div>
+                        <div class="bg-white rounded p-2">
+                            <code class="text-purple-600 font-mono">DEFAULT_STREAM</code>
+                            <span class="text-gray-600 ml-2">- 默认流式响应（默认：true）</span>
+                        </div>
+                        <div class="bg-white rounded p-2">
+                            <code class="text-purple-600 font-mono">ENABLE_THINKING</code>
+                            <span class="text-gray-600 ml-2">- 启用思考功能（默认：false）</span>
+                        </div>
+                        <div class="bg-white rounded p-2">
+                            <code class="text-purple-600 font-mono">DASHBOARD_ENABLED</code>
+                            <span class="text-gray-600 ml-2">- 启用 Dashboard（默认：true）</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Usage Example -->
+        <div class="bg-white rounded-xl shadow-sm border p-8 mb-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6 flex items-center">
+                <span class="mr-3">💻</span> 使用示例
+            </h2>
+
+            <p class="text-gray-700 mb-4">部署完成后，使用以下代码调用 API：</p>
+
+            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto mb-4">
+                <pre class="text-green-400 font-mono text-sm">import openai
+
+client = openai.OpenAI(
+    api_key="你设置的 DEFAULT_KEY",
+    base_url="https://zto2api.deno.dev/v1"
+)
+
+response = client.chat.completions.create(
+    model="GLM-4.5",
+    messages=[{"role": "user", "content": "你好"}]
+)
+
+print(response.choices[0].message.content)</pre>
+            </div>
+
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p class="text-sm text-blue-800">
+                    <strong>提示：</strong> 确保使用你在环境变量中设置的 <code class="bg-white px-2 py-1 rounded">DEFAULT_KEY</code> 作为 api_key
+                </p>
+            </div>
+        </div>
+
+        <!-- Tips -->
+        <div class="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-xl p-6 mb-6">
+            <h3 class="font-bold text-gray-900 mb-3 flex items-center">
+                <span class="text-2xl mr-2">💡</span> 小贴士
+            </h3>
+            <ul class="space-y-2 text-gray-700">
+                <li class="flex items-start">
+                    <span class="text-green-600 mr-2">✓</span>
+                    <span>Deno Deploy 提供免费额度，适合个人使用</span>
+                </li>
+                <li class="flex items-start">
+                    <span class="text-green-600 mr-2">✓</span>
+                    <span>每次 git push 后会自动重新部署</span>
+                </li>
+                <li class="flex items-start">
+                    <span class="text-green-600 mr-2">✓</span>
+                    <span>支持自定义域名（在项目设置中配置）</span>
+                </li>
+                <li class="flex items-start">
+                    <span class="text-green-600 mr-2">✓</span>
+                    <span>可在 Deno Deploy 控制台查看日志和监控</span>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex justify-center space-x-4">
+            <a href="https://dash.deno.com/new" target="_blank" class="inline-block bg-purple-600 hover:bg-purple-700 text-white font-semibold px-8 py-3 rounded-lg transition">
+                立即部署到 Deno Deploy
+            </a>
+            <a href="/" class="inline-block bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold px-8 py-3 rounded-lg transition">
+                返回首页
+            </a>
+        </div>
+    </div>
+</body>
+</html>`;
+
 // Home page HTML
 const homeHTML = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -984,11 +1219,17 @@ const homeHTML = `<!DOCTYPE html>
             </div>
 
             <!-- Navigation Cards -->
-            <div class="grid md:grid-cols-3 gap-6 mb-8">
+            <div class="grid md:grid-cols-4 gap-6 mb-8">
                 <a href="/docs" class="group bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 hover:bg-white/20 hover:border-white/40 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl">
                     <div class="text-5xl mb-4 group-hover:scale-110 transition-transform">📖</div>
                     <h3 class="text-white text-xl font-bold mb-2">API 文档</h3>
                     <p class="text-purple-100">查看完整的 API 使用文档和示例</p>
+                </a>
+
+                <a href="/deploy" class="group bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 hover:bg-white/20 hover:border-white/40 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl">
+                    <div class="text-5xl mb-4 group-hover:scale-110 transition-transform">🚀</div>
+                    <h3 class="text-white text-xl font-bold mb-2">部署指南</h3>
+                    <p class="text-purple-100">快速部署到 Deno Deploy</p>
                 </a>
 
                 <a href="/dashboard" class="group bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 hover:bg-white/20 hover:border-white/40 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl">
@@ -1033,6 +1274,7 @@ const apiDocsHTML = `<!DOCTYPE html>
                 <div class="flex space-x-4">
                     <a href="/" class="text-gray-600 hover:text-purple-600 transition">首页</a>
                     <a href="/docs" class="text-purple-600 font-semibold">文档</a>
+                    <a href="/deploy" class="text-gray-600 hover:text-purple-600 transition">部署</a>
                     <a href="/dashboard" class="text-gray-600 hover:text-purple-600 transition">Dashboard</a>
                 </div>
             </div>
@@ -1180,6 +1422,13 @@ async function handler(req: Request): Promise<Response> {
 
   if (path === "/docs" && req.method === "GET") {
     return new Response(apiDocsHTML, {
+      status: 200,
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
+  }
+
+  if (path === "/deploy" && req.method === "GET") {
+    return new Response(deployHTML, {
       status: 200,
       headers: { "Content-Type": "text/html; charset=utf-8" },
     });
