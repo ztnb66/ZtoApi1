@@ -731,59 +731,206 @@ const dashboardHTML = `<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API调用看板</title>
-    <style>
-        body { font-family: sans-serif; margin: 20px; background: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { text-align: center; color: #333; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0; }
-        .stat-card { background: #f8f9fa; border-radius: 6px; padding: 15px; text-align: center; }
-        .stat-value { font-size: 24px; font-weight: bold; color: #007bff; }
-        .stat-label { font-size: 14px; color: #6c757d; margin-top: 5px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-        th { background: #f8f9fa; }
-        .status-success { color: #28a745; }
-        .status-error { color: #dc3545; }
-    </style>
+    <title>Dashboard - ZtoApi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body>
-    <div class="container">
-        <h1>API调用看板</h1>
-        <div class="stats">
-            <div class="stat-card"><div class="stat-value" id="total">0</div><div class="stat-label">总请求数</div></div>
-            <div class="stat-card"><div class="stat-value" id="success">0</div><div class="stat-label">成功请求</div></div>
-            <div class="stat-card"><div class="stat-value" id="failed">0</div><div class="stat-label">失败请求</div></div>
-            <div class="stat-card"><div class="stat-value" id="avgtime">0ms</div><div class="stat-label">平均响应时间</div></div>
+<body class="bg-gray-50">
+    <nav class="bg-white shadow-sm border-b">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <a href="/" class="flex items-center space-x-2 text-purple-600 hover:text-purple-700 transition">
+                    <span class="text-2xl">🦕</span>
+                    <span class="text-xl font-bold">ZtoApi</span>
+                </a>
+                <div class="flex space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-purple-600 transition">首页</a>
+                    <a href="/docs" class="text-gray-600 hover:text-purple-600 transition">文档</a>
+                    <a href="/dashboard" class="text-purple-600 font-semibold">Dashboard</a>
+                </div>
+            </div>
         </div>
-        <h2>实时请求</h2>
-        <table>
-            <thead><tr><th>时间</th><th>方法</th><th>路径</th><th>状态</th><th>耗时</th></tr></thead>
-            <tbody id="requests"></tbody>
-        </table>
-        <p style="text-align: center; color: #6c757d; margin-top: 20px;">数据每5秒自动刷新</p>
-    </div>
-    <script>
-        async function update() {
-            const statsRes = await fetch('/dashboard/stats');
-            const stats = await statsRes.json();
-            document.getElementById('total').textContent = stats.totalRequests;
-            document.getElementById('success').textContent = stats.successfulRequests;
-            document.getElementById('failed').textContent = stats.failedRequests;
-            document.getElementById('avgtime').textContent = Math.round(stats.averageResponseTime) + 'ms';
+    </nav>
 
-            const reqsRes = await fetch('/dashboard/requests');
-            const reqs = await reqsRes.json();
-            const tbody = document.getElementById('requests');
-            tbody.innerHTML = '';
-            reqs.slice().reverse().forEach(r => {
-                const row = tbody.insertRow();
-                row.innerHTML = \`<td>\${new Date(r.timestamp).toLocaleTimeString()}</td>
-                    <td>\${r.method}</td><td>\${r.path}</td>
-                    <td class="\${r.status >= 200 && r.status < 300 ? 'status-success' : 'status-error'}">\${r.status}</td>
-                    <td>\${r.duration}ms</td>\`;
-            });
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900 mb-3">📊 Dashboard</h1>
+            <p class="text-gray-600">实时监控 API 请求和性能统计</p>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-600 text-sm mb-1">总请求数</p>
+                        <p class="text-3xl font-bold text-gray-900" id="total">0</p>
+                    </div>
+                    <div class="bg-purple-100 p-3 rounded-lg">
+                        <span class="text-3xl">📈</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-600 text-sm mb-1">成功请求</p>
+                        <p class="text-3xl font-bold text-green-600" id="success">0</p>
+                    </div>
+                    <div class="bg-green-100 p-3 rounded-lg">
+                        <span class="text-3xl">✅</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-600 text-sm mb-1">失败请求</p>
+                        <p class="text-3xl font-bold text-red-600" id="failed">0</p>
+                    </div>
+                    <div class="bg-red-100 p-3 rounded-lg">
+                        <span class="text-3xl">❌</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-600 text-sm mb-1">平均响应时间</p>
+                        <p class="text-3xl font-bold text-blue-600" id="avgtime">0ms</p>
+                    </div>
+                    <div class="bg-blue-100 p-3 rounded-lg">
+                        <span class="text-3xl">⚡</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chart -->
+        <div class="bg-white rounded-xl shadow-sm border p-6 mb-8">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">📉 响应时间趋势</h2>
+            <canvas id="chart" height="80"></canvas>
+        </div>
+
+        <!-- Requests Table -->
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-900">🔔 实时请求</h2>
+                <span class="text-sm text-gray-500">自动刷新（每5秒）</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="border-b">
+                            <th class="text-left py-3 px-4 text-gray-700 font-semibold">时间</th>
+                            <th class="text-left py-3 px-4 text-gray-700 font-semibold">方法</th>
+                            <th class="text-left py-3 px-4 text-gray-700 font-semibold">路径</th>
+                            <th class="text-left py-3 px-4 text-gray-700 font-semibold">状态</th>
+                            <th class="text-left py-3 px-4 text-gray-700 font-semibold">耗时</th>
+                        </tr>
+                    </thead>
+                    <tbody id="requests" class="divide-y"></tbody>
+                </table>
+            </div>
+            <div id="empty" class="text-center py-8 text-gray-500 hidden">
+                暂无请求记录
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let chart = null;
+        const chartData = { labels: [], data: [] };
+
+        async function update() {
+            try {
+                const statsRes = await fetch('/dashboard/stats');
+                const stats = await statsRes.json();
+                document.getElementById('total').textContent = stats.totalRequests;
+                document.getElementById('success').textContent = stats.successfulRequests;
+                document.getElementById('failed').textContent = stats.failedRequests;
+                document.getElementById('avgtime').textContent = Math.round(stats.averageResponseTime) + 'ms';
+
+                const reqsRes = await fetch('/dashboard/requests');
+                const reqs = await reqsRes.json();
+                const tbody = document.getElementById('requests');
+                const empty = document.getElementById('empty');
+
+                tbody.innerHTML = '';
+
+                if (reqs.length === 0) {
+                    empty.classList.remove('hidden');
+                } else {
+                    empty.classList.add('hidden');
+                    reqs.slice().reverse().slice(0, 20).forEach(r => {
+                        const row = tbody.insertRow();
+                        const time = new Date(r.timestamp).toLocaleTimeString();
+                        const statusClass = r.status >= 200 && r.status < 300 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50';
+
+                        row.innerHTML = \`
+                            <td class="py-3 px-4 text-gray-700">\${time}</td>
+                            <td class="py-3 px-4"><span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-sm font-mono">\${r.method}</span></td>
+                            <td class="py-3 px-4 font-mono text-sm text-gray-600">\${r.path}</td>
+                            <td class="py-3 px-4"><span class="\${statusClass} px-2 py-1 rounded font-semibold text-sm">\${r.status}</span></td>
+                            <td class="py-3 px-4 text-gray-700">\${r.duration}ms</td>
+                        \`;
+                    });
+
+                    // Update chart
+                    chartData.labels = reqs.slice(-20).map(r => new Date(r.timestamp).toLocaleTimeString());
+                    chartData.data = reqs.slice(-20).map(r => r.duration);
+                    updateChart();
+                }
+            } catch (e) {
+                console.error('Update error:', e);
+            }
         }
+
+        function updateChart() {
+            const ctx = document.getElementById('chart').getContext('2d');
+
+            if (chart) {
+                chart.data.labels = chartData.labels;
+                chart.data.datasets[0].data = chartData.data;
+                chart.update();
+            } else {
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: chartData.labels,
+                        datasets: [{
+                            label: '响应时间 (ms)',
+                            data: chartData.data,
+                            borderColor: 'rgb(147, 51, 234)',
+                            backgroundColor: 'rgba(147, 51, 234, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => \`响应时间: \${ctx.parsed.y}ms\`
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: { callback: (val) => val + 'ms' }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
         update();
         setInterval(update, 5000);
     </script>
@@ -797,197 +944,208 @@ const homeHTML = `<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ZtoApi - OpenAI兼容API代理</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            padding: 20px;
-        }
-        .container {
-            max-width: 800px;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 40px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        }
-        h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-            text-align: center;
-        }
-        .subtitle {
-            text-align: center;
-            opacity: 0.9;
-            margin-bottom: 30px;
-            font-size: 1.1em;
-        }
-        .status {
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 10px;
-            padding: 20px;
-            margin: 20px 0;
-        }
-        .status-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        .status-item:last-child { border-bottom: none; }
-        .status-label { font-weight: 500; }
-        .status-value {
-            font-family: 'Courier New', monospace;
-            background: rgba(0, 0, 0, 0.2);
-            padding: 2px 8px;
-            border-radius: 4px;
-        }
-        .links {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 30px;
-        }
-        .link-card {
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 10px;
-            padding: 20px;
-            text-align: center;
-            text-decoration: none;
-            color: white;
-            transition: all 0.3s;
-            border: 2px solid transparent;
-        }
-        .link-card:hover {
-            background: rgba(255, 255, 255, 0.3);
-            border-color: rgba(255, 255, 255, 0.5);
-            transform: translateY(-2px);
-        }
-        .link-icon { font-size: 2em; margin-bottom: 10px; }
-        .link-title { font-weight: 600; margin-bottom: 5px; }
-        .link-desc { font-size: 0.9em; opacity: 0.8; }
-        .footer {
-            text-align: center;
-            margin-top: 30px;
-            opacity: 0.7;
-            font-size: 0.9em;
-        }
-    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <div class="container">
-        <h1>🦕 ZtoApi</h1>
-        <p class="subtitle">OpenAI 兼容 API 代理 for Z.ai GLM-4.5</p>
-
-        <div class="status">
-            <div class="status-item">
-                <span class="status-label">状态</span>
-                <span class="status-value">🟢 运行中</span>
+<body class="min-h-screen bg-gradient-to-br from-purple-600 via-purple-700 to-indigo-800">
+    <div class="container mx-auto px-4 py-12 flex items-center justify-center min-h-screen">
+        <div class="max-w-4xl w-full">
+            <!-- Header -->
+            <div class="text-center mb-12 animate-fade-in">
+                <h1 class="text-6xl font-bold text-white mb-4">
+                    <span class="inline-block hover:scale-110 transition-transform">🦕</span> ZtoApi
+                </h1>
+                <p class="text-xl text-purple-100">OpenAI 兼容 API 代理 for Z.ai GLM-4.5</p>
             </div>
-            <div class="status-item">
-                <span class="status-label">模型</span>
-                <span class="status-value">${MODEL_NAME}</span>
+
+            <!-- Status Card -->
+            <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-8 mb-8 border border-white/20 shadow-2xl">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    <div class="text-center">
+                        <div class="text-3xl mb-2">🟢</div>
+                        <div class="text-white/60 text-sm mb-1">状态</div>
+                        <div class="text-white font-semibold">运行中</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl mb-2">🤖</div>
+                        <div class="text-white/60 text-sm mb-1">模型</div>
+                        <div class="text-white font-semibold font-mono">${MODEL_NAME}</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl mb-2">🔌</div>
+                        <div class="text-white/60 text-sm mb-1">端口</div>
+                        <div class="text-white font-semibold font-mono">${PORT}</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl mb-2">⚡</div>
+                        <div class="text-white/60 text-sm mb-1">运行时</div>
+                        <div class="text-white font-semibold">Deno</div>
+                    </div>
+                </div>
             </div>
-            <div class="status-item">
-                <span class="status-label">端口</span>
-                <span class="status-value">${PORT}</span>
+
+            <!-- Navigation Cards -->
+            <div class="grid md:grid-cols-3 gap-6 mb-8">
+                <a href="/docs" class="group bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 hover:bg-white/20 hover:border-white/40 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl">
+                    <div class="text-5xl mb-4 group-hover:scale-110 transition-transform">📖</div>
+                    <h3 class="text-white text-xl font-bold mb-2">API 文档</h3>
+                    <p class="text-purple-100">查看完整的 API 使用文档和示例</p>
+                </a>
+
+                <a href="/dashboard" class="group bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 hover:bg-white/20 hover:border-white/40 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl">
+                    <div class="text-5xl mb-4 group-hover:scale-110 transition-transform">📊</div>
+                    <h3 class="text-white text-xl font-bold mb-2">Dashboard</h3>
+                    <p class="text-purple-100">实时监控请求和性能统计</p>
+                </a>
+
+                <a href="/v1/models" class="group bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 hover:bg-white/20 hover:border-white/40 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl">
+                    <div class="text-5xl mb-4 group-hover:scale-110 transition-transform">🤖</div>
+                    <h3 class="text-white text-xl font-bold mb-2">模型列表</h3>
+                    <p class="text-purple-100">查看所有可用的 AI 模型</p>
+                </a>
             </div>
-            <div class="status-item">
-                <span class="status-label">运行时</span>
-                <span class="status-value">Deno 🦕</span>
+
+            <!-- Footer -->
+            <div class="text-center text-white/60 text-sm">
+                <p>Powered by <span class="font-semibold text-white">Deno 🦕</span> | OpenAI Compatible API</p>
             </div>
-        </div>
-
-        <div class="links">
-            <a href="/docs" class="link-card">
-                <div class="link-icon">📖</div>
-                <div class="link-title">API 文档</div>
-                <div class="link-desc">查看完整的 API 使用文档</div>
-            </a>
-
-            <a href="/dashboard" class="link-card">
-                <div class="link-icon">📊</div>
-                <div class="link-title">Dashboard</div>
-                <div class="link-desc">实时监控和统计信息</div>
-            </a>
-
-            <a href="/v1/models" class="link-card">
-                <div class="link-icon">🤖</div>
-                <div class="link-title">模型列表</div>
-                <div class="link-desc">查看可用的模型</div>
-            </a>
-        </div>
-
-        <div class="footer">
-            Powered by Deno 🦕 | OpenAI Compatible API
         </div>
     </div>
 </body>
 </html>`;
 
-// API docs HTML (simplified)
+// API docs HTML
 const apiDocsHTML = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZtoApi API文档</title>
-    <style>
-        body { font-family: sans-serif; margin: 20px; background: #f5f5f5; line-height: 1.6; }
-        .container { max-width: 1000px; margin: 0 auto; background: white; border-radius: 8px; padding: 30px; }
-        h1 { text-align: center; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
-        h2 { color: #007bff; margin-top: 30px; }
-        .endpoint { background: #f8f9fa; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #007bff; }
-        code { background: #e9ecef; padding: 2px 6px; border-radius: 3px; }
-        pre { background: #f8f9fa; padding: 15px; border-radius: 6px; overflow-x: auto; }
-    </style>
+    <title>API Documentation - ZtoApi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <div class="container">
-        <h1>ZtoApi API文档</h1>
-        <h2>概述</h2>
-        <p>OpenAI兼容的API代理服务器，用于Z.ai GLM-4.5模型。</p>
-        <p><strong>基础URL:</strong> <code>http://localhost:${PORT}/v1</code></p>
+<body class="bg-gray-50">
+    <nav class="bg-white shadow-sm border-b">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <a href="/" class="flex items-center space-x-2 text-purple-600 hover:text-purple-700 transition">
+                    <span class="text-2xl">🦕</span>
+                    <span class="text-xl font-bold">ZtoApi</span>
+                </a>
+                <div class="flex space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-purple-600 transition">首页</a>
+                    <a href="/docs" class="text-purple-600 font-semibold">文档</a>
+                    <a href="/dashboard" class="text-gray-600 hover:text-purple-600 transition">Dashboard</a>
+                </div>
+            </div>
+        </div>
+    </nav>
 
-        <h2>身份验证</h2>
-        <p>在请求头中包含API密钥：</p>
-        <pre>Authorization: Bearer ${DEFAULT_KEY}</pre>
-
-        <h2>端点</h2>
-        <div class="endpoint">
-            <h3>GET /v1/models</h3>
-            <p>获取可用模型列表</p>
+    <div class="container mx-auto px-4 py-8 max-w-5xl">
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-gray-900 mb-3">📖 API Documentation</h1>
+            <p class="text-gray-600">OpenAI 兼容的 API 接口文档</p>
         </div>
 
-        <div class="endpoint">
-            <h3>POST /v1/chat/completions</h3>
-            <p>创建聊天完成</p>
-            <p>参数:</p>
-            <ul>
-                <li><code>model</code> (string, 必需): 模型名称</li>
-                <li><code>messages</code> (array, 必需): 消息列表</li>
-                <li><code>stream</code> (boolean, 可选): 是否流式响应，默认 ${DEFAULT_STREAM}</li>
-                <li><code>enable_thinking</code> (boolean, 可选): 是否启用思考功能</li>
-            </ul>
+        <div class="bg-white rounded-xl shadow-sm border p-8 mb-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">概述</h2>
+            <p class="text-gray-700 mb-4">ZtoApi 是一个为 Z.ai GLM-4.5 模型提供 OpenAI 兼容 API 接口的代理服务器。</p>
+            <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <p class="text-sm text-gray-600 mb-2">基础 URL</p>
+                <code class="text-purple-700 font-mono text-lg">http://localhost:${PORT}/v1</code>
+            </div>
         </div>
 
-        <h2>示例</h2>
-        <pre>
-curl -X POST http://localhost:${PORT}/v1/chat/completions \\
+        <div class="bg-white rounded-xl shadow-sm border p-8 mb-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">🔐 身份验证</h2>
+            <p class="text-gray-700 mb-4">所有 API 请求都需要在请求头中包含 Bearer Token：</p>
+            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                <code class="text-green-400 font-mono text-sm">Authorization: Bearer ${DEFAULT_KEY}</code>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-8 mb-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6">🔌 API 端点</h2>
+
+            <div class="mb-8">
+                <div class="flex items-center space-x-3 mb-3">
+                    <span class="bg-green-100 text-green-700 px-3 py-1 rounded-lg font-semibold text-sm">GET</span>
+                    <code class="text-lg font-mono text-gray-800">/v1/models</code>
+                </div>
+                <p class="text-gray-700 mb-3">获取可用模型列表</p>
+                <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                    <pre class="text-green-400 font-mono text-sm">curl http://localhost:${PORT}/v1/models \\
+  -H "Authorization: Bearer ${DEFAULT_KEY}"</pre>
+                </div>
+            </div>
+
+            <div>
+                <div class="flex items-center space-x-3 mb-3">
+                    <span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg font-semibold text-sm">POST</span>
+                    <code class="text-lg font-mono text-gray-800">/v1/chat/completions</code>
+                </div>
+                <p class="text-gray-700 mb-4">创建聊天完成（支持流式和非流式）</p>
+
+                <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                    <h4 class="font-semibold text-gray-900 mb-3">请求参数</h4>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex items-start">
+                            <code class="bg-white px-2 py-1 rounded mr-3 text-purple-600 font-mono">model</code>
+                            <span class="text-gray-600">string, 必需 - 模型名称 (如 "${MODEL_NAME}")</span>
+                        </div>
+                        <div class="flex items-start">
+                            <code class="bg-white px-2 py-1 rounded mr-3 text-purple-600 font-mono">messages</code>
+                            <span class="text-gray-600">array, 必需 - 消息列表</span>
+                        </div>
+                        <div class="flex items-start">
+                            <code class="bg-white px-2 py-1 rounded mr-3 text-purple-600 font-mono">stream</code>
+                            <span class="text-gray-600">boolean, 可选 - 是否流式响应（默认: ${DEFAULT_STREAM}）</span>
+                        </div>
+                        <div class="flex items-start">
+                            <code class="bg-white px-2 py-1 rounded mr-3 text-purple-600 font-mono">enable_thinking</code>
+                            <span class="text-gray-600">boolean, 可选 - 是否启用思考功能</span>
+                        </div>
+                    </div>
+                </div>
+
+                <h4 class="font-semibold text-gray-900 mb-3">请求示例</h4>
+                <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                    <pre class="text-green-400 font-mono text-sm">curl -X POST http://localhost:${PORT}/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${DEFAULT_KEY}" \\
   -d '{
     "model": "${MODEL_NAME}",
-    "messages": [{"role": "user", "content": "Hello"}],
+    "messages": [
+      {"role": "user", "content": "你好"}
+    ],
     "stream": false
-  }'
-        </pre>
+  }'</pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-8 mb-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">🐍 Python 示例</h2>
+            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                <pre class="text-green-400 font-mono text-sm">import openai
+
+client = openai.OpenAI(
+    api_key="${DEFAULT_KEY}",
+    base_url="http://localhost:${PORT}/v1"
+)
+
+response = client.chat.completions.create(
+    model="${MODEL_NAME}",
+    messages=[{"role": "user", "content": "你好"}]
+)
+
+print(response.choices[0].message.content)</pre>
+            </div>
+        </div>
+
+        <div class="text-center">
+            <a href="/" class="inline-block bg-purple-600 hover:bg-purple-700 text-white font-semibold px-6 py-3 rounded-lg transition">
+                返回首页
+            </a>
+        </div>
     </div>
 </body>
 </html>`;
