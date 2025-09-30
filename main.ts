@@ -1,5 +1,8 @@
 // Deno OpenAI-Compatible API Proxy for Z.ai GLM-4.5
 
+// Make this file a module to support top-level await
+export {};
+
 // Config variables from environment
 const UPSTREAM_URL = Deno.env.get("UPSTREAM_URL") || "https://chat.z.ai/api/chat/completions";
 const DEFAULT_KEY = Deno.env.get("DEFAULT_KEY") || "sk-your-key";
@@ -33,6 +36,50 @@ interface RequestStats {
   failedRequests: number;
   lastRequestTime: Date;
   averageResponseTime: number; // in milliseconds
+  homePageViews: number; // homepage visits
+  apiCallsCount: number; // /v1/chat/completions calls
+  modelsCallsCount: number; // /v1/models calls
+  streamingRequests: number; // streaming mode requests
+  nonStreamingRequests: number; // non-streaming mode requests
+  totalTokensUsed: number; // total tokens (approximate)
+  startTime: Date; // server start time
+  fastestResponse: number; // fastest response time in ms
+  slowestResponse: number; // slowest response time in ms
+  modelUsage: Map<string, number>; // model name -> count
+}
+
+// Hourly and daily stats for persistent storage
+interface HourlyStats {
+  hour: string; // Format: YYYY-MM-DD-HH
+  requests: number;
+  success: number;
+  failed: number;
+  avgResponseTime: number;
+  tokens: number;
+  models?: Record<string, number>; // model usage
+  streamingCount?: number; // streaming requests count
+  nonStreamingCount?: number; // non-streaming requests count
+  totalMessages?: number; // total messages sent
+  uniqueIPs?: Set<string>; // unique client IPs (for this hour)
+  errorTypes?: Record<string, number>; // error status codes
+}
+
+interface DailyStats {
+  date: string; // Format: YYYY-MM-DD
+  requests: number;
+  success: number;
+  failed: number;
+  avgResponseTime: number;
+  tokens: number;
+  peakHour: string;
+  models?: Record<string, number>; // model usage
+  streamingCount?: number; // streaming requests count
+  nonStreamingCount?: number; // non-streaming requests count
+  totalMessages?: number; // total messages sent
+  uniqueIPsCount?: number; // unique client IPs count for the day
+  errorTypes?: Record<string, number>; // error status codes
+  fastestResponse?: number; // fastest response of the day
+  slowestResponse?: number; // slowest response of the day
 }
 
 interface LiveRequest {
@@ -43,6 +90,7 @@ interface LiveRequest {
   status: number;
   duration: number; // in milliseconds
   userAgent: string;
+  model?: string; // model name if applicable
 }
 
 // Global stats
@@ -52,9 +100,265 @@ const stats: RequestStats = {
   failedRequests: 0,
   lastRequestTime: new Date(),
   averageResponseTime: 0,
+  homePageViews: 0,
+  apiCallsCount: 0,
+  modelsCallsCount: 0,
+  streamingRequests: 0,
+  nonStreamingRequests: 0,
+  totalTokensUsed: 0,
+  startTime: new Date(),
+  fastestResponse: Infinity,
+  slowestResponse: 0,
+  modelUsage: new Map<string, number>(),
 };
 
 const liveRequests: LiveRequest[] = [];
+
+// Initialize Deno KV database
+let kv: Deno.Kv;
+
+// Initialize database connection
+async function initDB() {
+  try {
+    kv = await Deno.openKv();
+    debugLog("Deno KV database initialized");
+  } catch (error) {
+    console.error("Failed to initialize Deno KV:", error);
+  }
+}
+
+// Get current hour key (format: YYYY-MM-DD-HH)
+function getHourKey(): string {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}-${String(now.getUTCHours()).padStart(2, "0")}`;
+}
+
+// Get current date key (format: YYYY-MM-DD)
+function getDateKey(): string {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+}
+
+// Save hourly stats to KV
+async function saveHourlyStats(
+  duration: number,
+  status: number,
+  tokens: number,
+  model?: string,
+  isStreaming?: boolean,
+  messageCount?: number,
+  clientIP?: string,
+) {
+  if (!kv) return;
+
+  const hourKey = getHourKey();
+  const key = ["stats", "hourly", hourKey];
+
+  try {
+    const existing = await kv.get<HourlyStats>(key);
+    const current = existing.value || {
+      hour: hourKey,
+      requests: 0,
+      success: 0,
+      failed: 0,
+      avgResponseTime: 0,
+      tokens: 0,
+      models: {},
+      streamingCount: 0,
+      nonStreamingCount: 0,
+      totalMessages: 0,
+      uniqueIPs: new Set<string>(),
+      errorTypes: {},
+    };
+
+    current.requests++;
+    if (status >= 200 && status < 300) {
+      current.success++;
+    } else {
+      current.failed++;
+      // Track error types
+      if (!current.errorTypes) current.errorTypes = {};
+      current.errorTypes[status] = (current.errorTypes[status] || 0) + 1;
+    }
+
+    // Update average response time
+    const totalTime = current.avgResponseTime * (current.requests - 1) + duration;
+    current.avgResponseTime = totalTime / current.requests;
+    current.tokens += tokens;
+
+    // Track model usage
+    if (model && current.models) {
+      current.models[model] = (current.models[model] || 0) + 1;
+    }
+
+    // Track streaming vs non-streaming
+    if (isStreaming !== undefined) {
+      if (isStreaming) {
+        current.streamingCount = (current.streamingCount || 0) + 1;
+      } else {
+        current.nonStreamingCount = (current.nonStreamingCount || 0) + 1;
+      }
+    }
+
+    // Track message count
+    if (messageCount) {
+      current.totalMessages = (current.totalMessages || 0) + messageCount;
+    }
+
+    // Track unique IPs
+    if (clientIP && clientIP !== "unknown") {
+      if (!current.uniqueIPs) current.uniqueIPs = new Set();
+      current.uniqueIPs.add(clientIP);
+    }
+
+    // Convert Set to Array for storage
+    const dataToStore = {
+      ...current,
+      uniqueIPs: Array.from(current.uniqueIPs || []),
+    };
+
+    await kv.set(key, dataToStore, { expireIn: 7 * 24 * 60 * 60 * 1000 }); // Expire after 7 days
+  } catch (error) {
+    debugLog("Error saving hourly stats:", error);
+  }
+}
+
+// Save daily stats to KV
+async function saveDailyStats() {
+  if (!kv) return;
+
+  const dateKey = getDateKey();
+  const key = ["stats", "daily", dateKey];
+
+  try {
+    // Aggregate all hourly stats for today
+    const prefix = ["stats", "hourly"];
+    const entries = kv.list<HourlyStats>({ prefix });
+
+    let totalRequests = 0;
+    let totalSuccess = 0;
+    let totalFailed = 0;
+    let totalResponseTime = 0;
+    let totalTokens = 0;
+    let peakHour = "";
+    let peakRequests = 0;
+    const modelUsage: Record<string, number> = {};
+
+    for await (const entry of entries) {
+      if (entry.value.hour.startsWith(dateKey)) {
+        totalRequests += entry.value.requests;
+        totalSuccess += entry.value.success;
+        totalFailed += entry.value.failed;
+        totalResponseTime += entry.value.avgResponseTime * entry.value.requests;
+        totalTokens += entry.value.tokens;
+
+        if (entry.value.requests > peakRequests) {
+          peakRequests = entry.value.requests;
+          peakHour = entry.value.hour;
+        }
+
+        // Aggregate model usage
+        if (entry.value.models) {
+          for (const [model, count] of Object.entries(entry.value.models)) {
+            modelUsage[model] = (modelUsage[model] || 0) + count;
+          }
+        }
+      }
+    }
+
+    const dailyStat: DailyStats = {
+      date: dateKey,
+      requests: totalRequests,
+      success: totalSuccess,
+      failed: totalFailed,
+      avgResponseTime: totalRequests > 0 ? totalResponseTime / totalRequests : 0,
+      tokens: totalTokens,
+      peakHour,
+      models: modelUsage,
+    };
+
+    await kv.set(key, dailyStat, { expireIn: 30 * 24 * 60 * 60 * 1000 }); // Expire after 30 days
+  } catch (error) {
+    debugLog("Error saving daily stats:", error);
+  }
+}
+
+// Get hourly stats for last N hours
+async function getHourlyStats(hours = 24): Promise<HourlyStats[]> {
+  if (!kv) return [];
+
+  const result: HourlyStats[] = [];
+  const prefix = ["stats", "hourly"];
+
+  try {
+    const entries = kv.list<HourlyStats>({ prefix, reverse: true, limit: hours });
+    for await (const entry of entries) {
+      result.push(entry.value);
+    }
+  } catch (error) {
+    debugLog("Error getting hourly stats:", error);
+  }
+
+  return result.reverse();
+}
+
+// Get daily stats for last N days
+async function getDailyStats(days = 30): Promise<DailyStats[]> {
+  if (!kv) return [];
+
+  const result: DailyStats[] = [];
+  const prefix = ["stats", "daily"];
+
+  try {
+    const entries = kv.list<DailyStats>({ prefix, reverse: true, limit: days });
+    for await (const entry of entries) {
+      result.push(entry.value);
+    }
+  } catch (error) {
+    debugLog("Error getting daily stats:", error);
+  }
+
+  return result.reverse();
+}
+
+// Cleanup old data (called periodically)
+async function cleanupOldData() {
+  if (!kv) return;
+
+  try {
+    // Delete hourly data older than 7 days
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const cutoffHour = `${sevenDaysAgo.getUTCFullYear()}-${String(sevenDaysAgo.getUTCMonth() + 1).padStart(2, "0")}-${String(sevenDaysAgo.getUTCDate()).padStart(2, "0")}-${String(sevenDaysAgo.getUTCHours()).padStart(2, "0")}`;
+
+    const hourlyPrefix = ["stats", "hourly"];
+    const hourlyEntries = kv.list({ prefix: hourlyPrefix });
+
+    for await (const entry of hourlyEntries) {
+      const hour = entry.key[2] as string;
+      if (hour < cutoffHour) {
+        await kv.delete(entry.key);
+        debugLog("Deleted old hourly data:", hour);
+      }
+    }
+
+    // Delete daily data older than 30 days
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const cutoffDate = `${thirtyDaysAgo.getUTCFullYear()}-${String(thirtyDaysAgo.getUTCMonth() + 1).padStart(2, "0")}-${String(thirtyDaysAgo.getUTCDate()).padStart(2, "0")}`;
+
+    const dailyPrefix = ["stats", "daily"];
+    const dailyEntries = kv.list({ prefix: dailyPrefix });
+
+    for await (const entry of dailyEntries) {
+      const date = entry.key[2] as string;
+      if (date < cutoffDate) {
+        await kv.delete(entry.key);
+        debugLog("Deleted old daily data:", date);
+      }
+    }
+  } catch (error) {
+    debugLog("Error cleaning up old data:", error);
+  }
+}
 
 // OpenAI request/response types
 interface Message {
@@ -152,7 +456,16 @@ function debugLog(...args: unknown[]) {
 }
 
 // Record request stats
-function recordRequestStats(startTime: number, _path: string, status: number) {
+async function recordRequestStats(
+  startTime: number,
+  path: string,
+  status: number,
+  tokens = 0,
+  model?: string,
+  isStreaming?: boolean,
+  messageCount?: number,
+  clientIP?: string,
+) {
   const duration = Date.now() - startTime;
 
   stats.totalRequests++;
@@ -164,6 +477,32 @@ function recordRequestStats(startTime: number, _path: string, status: number) {
     stats.failedRequests++;
   }
 
+  // Track endpoint-specific stats
+  if (path === "/v1/chat/completions") {
+    stats.apiCallsCount++;
+  } else if (path === "/v1/models") {
+    stats.modelsCallsCount++;
+  }
+
+  // Track tokens
+  if (tokens > 0) {
+    stats.totalTokensUsed += tokens;
+  }
+
+  // Track model usage
+  if (model) {
+    const count = stats.modelUsage.get(model) || 0;
+    stats.modelUsage.set(model, count + 1);
+  }
+
+  // Update response time stats
+  if (duration < stats.fastestResponse) {
+    stats.fastestResponse = duration;
+  }
+  if (duration > stats.slowestResponse) {
+    stats.slowestResponse = duration;
+  }
+
   // Update average response time
   if (stats.totalRequests > 0) {
     const totalDuration = stats.averageResponseTime * (stats.totalRequests - 1) + duration;
@@ -171,6 +510,11 @@ function recordRequestStats(startTime: number, _path: string, status: number) {
   } else {
     stats.averageResponseTime = duration;
   }
+
+  // Save to KV database (async, don't await to avoid blocking)
+  saveHourlyStats(duration, status, tokens, model, isStreaming, messageCount, clientIP).catch((err) =>
+    debugLog("Error saving hourly stats:", err)
+  );
 }
 
 // Add live request
@@ -181,6 +525,7 @@ function addLiveRequest(
   duration: number,
   _clientIP: string,
   userAgent: string,
+  model?: string,
 ) {
   const request: LiveRequest = {
     id: `${Date.now()}${Math.random()}`,
@@ -190,6 +535,7 @@ function addLiveRequest(
     status,
     duration,
     userAgent,
+    model,
   };
 
   liveRequests.push(request);
@@ -319,6 +665,8 @@ async function handleStreamResponse(
   path: string,
   clientIP: string,
   userAgent: string,
+  model: string,
+  messageCount: number,
 ): Promise<Response> {
   debugLog("Handling stream response, chat_id:", chatID);
 
@@ -327,8 +675,8 @@ async function handleStreamResponse(
   if (!upstreamResp.ok) {
     debugLog("Upstream error status:", upstreamResp.status);
     const duration = Date.now() - startTime;
-    recordRequestStats(startTime, path, 502);
-    addLiveRequest("POST", path, 502, duration, clientIP, userAgent);
+    recordRequestStats(startTime, path, 502, 0, model, true, messageCount, clientIP);
+    addLiveRequest("POST", path, 502, duration, clientIP, userAgent, model);
     return new Response("Upstream error", { status: 502 });
   }
 
@@ -337,10 +685,35 @@ async function handleStreamResponse(
 
   const stream = new ReadableStream({
     async start(controller) {
+      let streamClosed = false;
+
+      const safeEnqueue = (data: Uint8Array) => {
+        if (!streamClosed) {
+          try {
+            controller.enqueue(data);
+          } catch (e) {
+            debugLog("Enqueue error:", e);
+            streamClosed = true;
+          }
+        }
+      };
+
+      const safeClose = () => {
+        if (!streamClosed) {
+          try {
+            controller.close();
+            streamClosed = true;
+          } catch (e) {
+            debugLog("Close error:", e);
+            streamClosed = true;
+          }
+        }
+      };
+
       try {
         const reader = upstreamResp.body?.getReader();
         if (!reader) {
-          controller.close();
+          safeClose();
           return;
         }
 
@@ -359,7 +732,7 @@ async function handleStreamResponse(
               delta: { role: "assistant" },
             }],
           };
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(firstChunk)}\n\n`));
+          safeEnqueue(encoder.encode(`data: ${JSON.stringify(firstChunk)}\n\n`));
           isFirstChunk = false;
         }
 
@@ -397,9 +770,14 @@ async function handleStreamResponse(
                     finish_reason: "stop",
                   }],
                 };
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(endChunk)}\n\n`));
-                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-                break;
+                safeEnqueue(encoder.encode(`data: ${JSON.stringify(endChunk)}\n\n`));
+                safeEnqueue(encoder.encode("data: [DONE]\n\n"));
+                safeClose();
+                // Record stats before returning
+                const duration = Date.now() - startTime;
+                recordRequestStats(startTime, path, 200, 0, model, true, messageCount, clientIP);
+                addLiveRequest("POST", path, 200, duration, clientIP, userAgent, model);
+                return;
               }
 
               // Process content
@@ -420,7 +798,7 @@ async function handleStreamResponse(
                       delta: { content: out },
                     }],
                   };
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                  safeEnqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
                 }
               }
 
@@ -438,9 +816,14 @@ async function handleStreamResponse(
                     finish_reason: "stop",
                   }],
                 };
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(endChunk)}\n\n`));
-                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-                break;
+                safeEnqueue(encoder.encode(`data: ${JSON.stringify(endChunk)}\n\n`));
+                safeEnqueue(encoder.encode("data: [DONE]\n\n"));
+                safeClose();
+                // Record stats before returning
+                const duration = Date.now() - startTime;
+                recordRequestStats(startTime, path, 200, 0, model, true, messageCount, clientIP);
+                addLiveRequest("POST", path, 200, duration, clientIP, userAgent, model);
+                return;
               }
             } catch (e) {
               debugLog("Parse error:", e);
@@ -448,15 +831,22 @@ async function handleStreamResponse(
           }
         }
 
-        controller.close();
+        safeClose();
 
         // Record stats
         const duration = Date.now() - startTime;
-        recordRequestStats(startTime, path, 200);
-        addLiveRequest("POST", path, 200, duration, clientIP, userAgent);
+        recordRequestStats(startTime, path, 200, 0, model, true, messageCount, clientIP);
+        addLiveRequest("POST", path, 200, duration, clientIP, userAgent, model);
       } catch (error) {
         debugLog("Stream error:", error);
-        controller.error(error);
+        if (!streamClosed) {
+          try {
+            controller.error(error);
+            streamClosed = true;
+          } catch (e) {
+            debugLog("Error calling controller.error:", e);
+          }
+        }
       }
     },
   });
@@ -481,6 +871,8 @@ async function handleNonStreamResponse(
   path: string,
   clientIP: string,
   userAgent: string,
+  model: string,
+  messageCount: number,
 ): Promise<Response> {
   debugLog("Handling non-stream response, chat_id:", chatID);
 
@@ -489,8 +881,8 @@ async function handleNonStreamResponse(
   if (!upstreamResp.ok) {
     debugLog("Upstream error status:", upstreamResp.status);
     const duration = Date.now() - startTime;
-    recordRequestStats(startTime, path, 502);
-    addLiveRequest("POST", path, 502, duration, clientIP, userAgent);
+    recordRequestStats(startTime, path, 502, 0, model, false, messageCount, clientIP);
+    addLiveRequest("POST", path, 502, duration, clientIP, userAgent, model);
     return new Response("Upstream error", { status: 502 });
   }
 
@@ -560,8 +952,8 @@ async function handleNonStreamResponse(
   };
 
   const duration = Date.now() - startTime;
-  recordRequestStats(startTime, path, 200);
-  addLiveRequest("POST", path, 200, duration, clientIP, userAgent);
+  recordRequestStats(startTime, path, 200, 0, model, false, messageCount, clientIP);
+  addLiveRequest("POST", path, 200, duration, clientIP, userAgent, model);
 
   return new Response(JSON.stringify(response), {
     status: 200,
@@ -581,21 +973,100 @@ function setCORSHeaders(headers: Headers) {
 }
 
 // Handle models endpoint
-function handleModels(_req: Request): Response {
-  const response = {
-    object: "list",
-    data: [{
-      id: MODEL_NAME,
+async function handleModels(req: Request): Promise<Response> {
+  const startTime = Date.now();
+  const clientIP = getClientIP(req);
+  const userAgent = req.headers.get("User-Agent") || "";
+
+  try {
+    // Get token (ZAI_TOKEN or anonymous)
+    let token = ZAI_TOKEN;
+    if (!token) {
+      token = await getAnonymousToken();
+      if (!token) {
+        debugLog("Failed to get anonymous token for models request");
+        const duration = Date.now() - startTime;
+        recordRequestStats(startTime, "/v1/models", 500, 0, undefined, undefined, undefined, clientIP);
+        addLiveRequest("GET", "/v1/models", 500, duration, clientIP, userAgent);
+        return new Response(JSON.stringify({ error: "Failed to authenticate" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // Request models from upstream
+    const upstreamResponse = await fetch("https://chat.z.ai/api/models", {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+        "Accept-Language": "zh-CN",
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+        "User-Agent": BROWSER_UA,
+        "Referer": "https://chat.z.ai/",
+        "sec-ch-ua": SEC_CH_UA,
+        "sec-ch-ua-mobile": SEC_CH_UA_MOB,
+        "sec-ch-ua-platform": SEC_CH_UA_PLAT,
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+      },
+    });
+
+    if (!upstreamResponse.ok) {
+      debugLog(`Upstream models request failed: ${upstreamResponse.status}`);
+      throw new Error(`Upstream returned ${upstreamResponse.status}`);
+    }
+
+    const upstreamData = await upstreamResponse.json();
+
+    // Transform to OpenAI format
+    const models = upstreamData.data.map((model: any) => ({
+      id: model.name || model.id,
       object: "model",
       created: Math.floor(Date.now() / 1000),
       owned_by: "z.ai",
-    }],
-  };
+    }));
 
-  const headers = new Headers({ "Content-Type": "application/json" });
-  setCORSHeaders(headers);
+    const response = {
+      object: "list",
+      data: models,
+    };
 
-  return new Response(JSON.stringify(response), { status: 200, headers });
+    const headers = new Headers({ "Content-Type": "application/json" });
+    setCORSHeaders(headers);
+
+    // Record successful stats
+    const duration = Date.now() - startTime;
+    recordRequestStats(startTime, "/v1/models", 200, 0, undefined, undefined, undefined, clientIP);
+    addLiveRequest("GET", "/v1/models", 200, duration, clientIP, userAgent);
+
+    return new Response(JSON.stringify(response), { status: 200, headers });
+  } catch (error) {
+    debugLog(`Error fetching models: ${error}`);
+
+    // Fallback to default model
+    const response = {
+      object: "list",
+      data: [{
+        id: MODEL_NAME,
+        object: "model",
+        created: Math.floor(Date.now() / 1000),
+        owned_by: "z.ai",
+      }],
+    };
+
+    const headers = new Headers({ "Content-Type": "application/json" });
+    setCORSHeaders(headers);
+
+    // Record error stats (still return 200 with fallback data)
+    const duration = Date.now() - startTime;
+    recordRequestStats(startTime, "/v1/models", 200, 0, undefined, undefined, undefined, clientIP);
+    addLiveRequest("GET", "/v1/models", 200, duration, clientIP, userAgent);
+
+    return new Response(JSON.stringify(response), { status: 200, headers });
+  }
 }
 
 // Handle chat completions
@@ -645,6 +1116,13 @@ async function handleChatCompletions(req: Request): Promise<Response> {
   if (body.stream === undefined) {
     body.stream = DEFAULT_STREAM;
     debugLog("Using default stream value:", DEFAULT_STREAM);
+  }
+
+  // Track streaming vs non-streaming requests
+  if (body.stream) {
+    stats.streamingRequests++;
+  } else {
+    stats.nonStreamingRequests++;
   }
 
   debugLog(
@@ -711,6 +1189,8 @@ async function handleChatCompletions(req: Request): Promise<Response> {
       path,
       clientIP,
       userAgent,
+      body.model,
+      body.messages.length,
     );
   } else {
     return await handleNonStreamResponse(
@@ -721,6 +1201,8 @@ async function handleChatCompletions(req: Request): Promise<Response> {
       path,
       clientIP,
       userAgent,
+      body.model,
+      body.messages.length,
     );
   }
 }
@@ -760,7 +1242,7 @@ const dashboardHTML = `<!DOCTYPE html>
         </div>
 
         <!-- Stats Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
             <div class="bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition">
                 <div class="flex items-center justify-between">
                     <div>
@@ -808,11 +1290,137 @@ const dashboardHTML = `<!DOCTYPE html>
                     </div>
                 </div>
             </div>
+
+            <div class="bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-600 text-sm mb-1">首页访问</p>
+                        <p class="text-3xl font-bold text-indigo-600" id="homeviews">0</p>
+                    </div>
+                    <div class="bg-indigo-100 p-3 rounded-lg">
+                        <span class="text-3xl">🏠</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <!-- API Stats -->
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                    <span class="text-2xl mr-2">🎯</span> API 统计
+                </h3>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">Chat Completions</span>
+                        <span class="font-bold text-purple-600" id="api-calls">0</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">Models 查询</span>
+                        <span class="font-bold text-purple-600" id="models-calls">0</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">流式请求</span>
+                        <span class="font-bold text-blue-600" id="streaming">0</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">非流式请求</span>
+                        <span class="font-bold text-blue-600" id="non-streaming">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Performance Stats -->
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                    <span class="text-2xl mr-2">⚡</span> 性能指标
+                </h3>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">平均响应</span>
+                        <span class="font-bold text-blue-600" id="avg-time-detail">0ms</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">最快响应</span>
+                        <span class="font-bold text-green-600" id="fastest">0ms</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">最慢响应</span>
+                        <span class="font-bold text-orange-600" id="slowest">0ms</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">成功率</span>
+                        <span class="font-bold text-green-600" id="success-rate">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Info -->
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                    <span class="text-2xl mr-2">📊</span> 系统信息
+                </h3>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">运行时长</span>
+                        <span class="font-bold text-indigo-600" id="uptime">0</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">Token 使用</span>
+                        <span class="font-bold text-indigo-600" id="tokens">0</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">最后请求</span>
+                        <span class="font-bold text-gray-600 text-xs" id="last-request">-</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-600 text-sm">首页访问</span>
+                        <span class="font-bold text-indigo-600" id="home-visits">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Models Card -->
+        <div class="bg-white rounded-xl shadow-sm border p-6 mb-8">
+            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                <span class="text-2xl mr-2">🏆</span> 热门模型 Top 3
+            </h3>
+            <div id="top-models" class="space-y-3">
+                <p class="text-gray-500 text-sm">暂无数据</p>
+            </div>
         </div>
 
         <!-- Chart -->
         <div class="bg-white rounded-xl shadow-sm border p-6 mb-8">
-            <h2 class="text-xl font-bold text-gray-900 mb-4">📉 响应时间趋势</h2>
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-900">📉 请求趋势分析</h2>
+                <div class="flex gap-2">
+                    <button id="view-hourly" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold">按小时</button>
+                    <button id="view-daily" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-sm font-semibold">按天</button>
+                </div>
+            </div>
+
+            <!-- Info banner -->
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                <p class="text-sm text-blue-800">
+                    💡 <strong>提示：</strong>此图表显示基于 Deno KV 持久化存储的历史数据。数据会在每次 API 请求后自动保存，并在 Deno Deploy 上永久保留（本地开发环境可能在重启后丢失）。
+                </p>
+            </div>
+
+            <div class="mb-3 flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-600">时间范围:</span>
+                    <select id="time-range" class="px-3 py-1 border rounded-lg text-sm">
+                        <option value="12">最近12个</option>
+                        <option value="24" selected>最近24个</option>
+                        <option value="48">最近48个</option>
+                        <option value="72">最近72个</option>
+                    </select>
+                </div>
+                <div class="text-sm text-gray-500" id="chart-subtitle">显示最近24小时的数据</div>
+            </div>
             <canvas id="chart" height="80"></canvas>
         </div>
 
@@ -829,6 +1437,7 @@ const dashboardHTML = `<!DOCTYPE html>
                             <th class="text-left py-3 px-4 text-gray-700 font-semibold">时间</th>
                             <th class="text-left py-3 px-4 text-gray-700 font-semibold">方法</th>
                             <th class="text-left py-3 px-4 text-gray-700 font-semibold">路径</th>
+                            <th class="text-left py-3 px-4 text-gray-700 font-semibold">模型</th>
                             <th class="text-left py-3 px-4 text-gray-700 font-semibold">状态</th>
                             <th class="text-left py-3 px-4 text-gray-700 font-semibold">耗时</th>
                         </tr>
@@ -839,54 +1448,173 @@ const dashboardHTML = `<!DOCTYPE html>
             <div id="empty" class="text-center py-8 text-gray-500 hidden">
                 暂无请求记录
             </div>
+            <!-- Pagination -->
+            <div id="pagination" class="mt-4 flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <div class="text-sm text-gray-600">
+                        共 <span id="total-requests">0</span> 条记录，第 <span id="current-page">1</span> / <span id="total-pages">1</span> 页
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm text-gray-600">每页:</span>
+                        <select id="page-size" class="px-2 py-1 border rounded text-sm">
+                            <option value="5">5</option>
+                            <option value="10">10</option>
+                            <option value="20" selected>20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button id="prev-page" class="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed">上一页</button>
+                    <button id="next-page" class="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed">下一页</button>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
         let chart = null;
         const chartData = { labels: [], data: [] };
+        let currentPage = 1;
+        let pageSize = 20;
+        let chartViewMode = 'hourly'; // 'hourly' or 'daily'
+        let chartTimeRange = 24; // hours or days
 
         async function update() {
             try {
                 const statsRes = await fetch('/dashboard/stats');
                 const stats = await statsRes.json();
+
+                // Top cards
                 document.getElementById('total').textContent = stats.totalRequests;
                 document.getElementById('success').textContent = stats.successfulRequests;
                 document.getElementById('failed').textContent = stats.failedRequests;
                 document.getElementById('avgtime').textContent = Math.round(stats.averageResponseTime) + 'ms';
+                document.getElementById('homeviews').textContent = stats.homePageViews;
 
-                const reqsRes = await fetch('/dashboard/requests');
-                const reqs = await reqsRes.json();
+                // API Stats
+                document.getElementById('api-calls').textContent = stats.apiCallsCount || 0;
+                document.getElementById('models-calls').textContent = stats.modelsCallsCount || 0;
+                document.getElementById('streaming').textContent = stats.streamingRequests || 0;
+                document.getElementById('non-streaming').textContent = stats.nonStreamingRequests || 0;
+
+                // Performance Stats
+                document.getElementById('avg-time-detail').textContent = Math.round(stats.averageResponseTime) + 'ms';
+                document.getElementById('fastest').textContent = stats.fastestResponse === Infinity ? '-' : Math.round(stats.fastestResponse) + 'ms';
+                document.getElementById('slowest').textContent = stats.slowestResponse === 0 ? '-' : Math.round(stats.slowestResponse) + 'ms';
+                const successRate = stats.totalRequests > 0 ? ((stats.successfulRequests / stats.totalRequests) * 100).toFixed(1) : '0';
+                document.getElementById('success-rate').textContent = successRate + '%';
+
+                // System Info
+                const uptime = Date.now() - new Date(stats.startTime).getTime();
+                const hours = Math.floor(uptime / 3600000);
+                const minutes = Math.floor((uptime % 3600000) / 60000);
+                document.getElementById('uptime').textContent = hours + 'h ' + minutes + 'm';
+                document.getElementById('tokens').textContent = (stats.totalTokensUsed || 0).toLocaleString();
+                document.getElementById('last-request').textContent = stats.lastRequestTime ? new Date(stats.lastRequestTime).toLocaleTimeString() : '-';
+                document.getElementById('home-visits').textContent = stats.homePageViews;
+
+                // Top Models
+                const topModelsDiv = document.getElementById('top-models');
+                if (stats.topModels && stats.topModels.length > 0) {
+                    topModelsDiv.innerHTML = stats.topModels.map((m, i) => \`
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="text-lg">\${i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</span>
+                                <span class="font-mono text-sm text-gray-700">\${m.model}</span>
+                            </div>
+                            <span class="font-bold text-purple-600">\${m.count}</span>
+                        </div>
+                    \`).join('');
+                } else {
+                    topModelsDiv.innerHTML = '<p class="text-gray-500 text-sm">暂无数据</p>';
+                }
+
+                // Fetch paginated requests
+                const reqsRes = await fetch(\`/dashboard/requests?page=\${currentPage}&pageSize=\${pageSize}\`);
+                const data = await reqsRes.json();
                 const tbody = document.getElementById('requests');
                 const empty = document.getElementById('empty');
 
                 tbody.innerHTML = '';
 
-                if (reqs.length === 0) {
+                if (data.requests.length === 0) {
                     empty.classList.remove('hidden');
                 } else {
                     empty.classList.add('hidden');
-                    reqs.slice().reverse().slice(0, 20).forEach(r => {
+                    data.requests.forEach(r => {
                         const row = tbody.insertRow();
                         const time = new Date(r.timestamp).toLocaleTimeString();
                         const statusClass = r.status >= 200 && r.status < 300 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50';
+                        const modelDisplay = r.model ? r.model : '-';
 
                         row.innerHTML = \`
                             <td class="py-3 px-4 text-gray-700">\${time}</td>
                             <td class="py-3 px-4"><span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-sm font-mono">\${r.method}</span></td>
                             <td class="py-3 px-4 font-mono text-sm text-gray-600">\${r.path}</td>
+                            <td class="py-3 px-4 font-mono text-xs text-gray-600">\${modelDisplay}</td>
                             <td class="py-3 px-4"><span class="\${statusClass} px-2 py-1 rounded font-semibold text-sm">\${r.status}</span></td>
                             <td class="py-3 px-4 text-gray-700">\${r.duration}ms</td>
                         \`;
                     });
 
-                    // Update chart
-                    chartData.labels = reqs.slice(-20).map(r => new Date(r.timestamp).toLocaleTimeString());
-                    chartData.data = reqs.slice(-20).map(r => r.duration);
-                    updateChart();
+                    // Update pagination info
+                    document.getElementById('total-requests').textContent = data.total;
+                    document.getElementById('current-page').textContent = data.page;
+                    document.getElementById('total-pages').textContent = data.totalPages;
+
+                    // Enable/disable pagination buttons
+                    document.getElementById('prev-page').disabled = data.page <= 1;
+                    document.getElementById('next-page').disabled = data.page >= data.totalPages;
                 }
             } catch (e) {
                 console.error('Update error:', e);
+            }
+        }
+
+        async function updateChartData() {
+            try {
+                let endpoint, labelKey, subtitle;
+
+                if (chartViewMode === 'hourly') {
+                    endpoint = \`/dashboard/hourly?hours=\${chartTimeRange}\`;
+                    labelKey = 'hour';
+                    subtitle = \`显示最近\${chartTimeRange}小时的数据\`;
+                } else {
+                    endpoint = \`/dashboard/daily?days=\${chartTimeRange}\`;
+                    labelKey = 'date';
+                    subtitle = \`显示最近\${chartTimeRange}天的数据\`;
+                }
+
+                const res = await fetch(endpoint);
+                const data = await res.json();
+
+                if (data && data.length > 0) {
+                    chartData.labels = data.map(d => {
+                        if (chartViewMode === 'hourly') {
+                            // Format: 2025-09-30-14 -> 09-30 14:00
+                            const parts = d[labelKey].split('-');
+                            return \`\${parts[1]}-\${parts[2]} \${parts[3]}:00\`;
+                        } else {
+                            // Format: 2025-09-30 -> 09-30
+                            const parts = d[labelKey].split('-');
+                            return \`\${parts[1]}-\${parts[2]}\`;
+                        }
+                    });
+                    chartData.data = data.map(d => Math.round(d.avgResponseTime));
+                    subtitle += \` (共\${data.length}条记录)\`;
+                } else {
+                    chartData.labels = [];
+                    chartData.data = [];
+                    subtitle += ' - ⚠️ 暂无持久化数据，请发送API请求后稍等片刻';
+                }
+
+                document.getElementById('chart-subtitle').textContent = subtitle;
+                updateChart();
+            } catch (e) {
+                console.error('Chart update error:', e);
+                document.getElementById('chart-subtitle').textContent = '⚠️ 加载数据失败: ' + e.message;
             }
         }
 
@@ -932,8 +1660,51 @@ const dashboardHTML = `<!DOCTYPE html>
             }
         }
 
+        // Pagination handlers
+        document.getElementById('prev-page').addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                update();
+            }
+        });
+
+        document.getElementById('next-page').addEventListener('click', () => {
+            currentPage++;
+            update();
+        });
+
+        // Chart view mode handlers
+        document.getElementById('view-hourly').addEventListener('click', () => {
+            chartViewMode = 'hourly';
+            document.getElementById('view-hourly').className = 'px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold';
+            document.getElementById('view-daily').className = 'px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-sm font-semibold';
+            updateChartData();
+        });
+
+        document.getElementById('view-daily').addEventListener('click', () => {
+            chartViewMode = 'daily';
+            document.getElementById('view-daily').className = 'px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold';
+            document.getElementById('view-hourly').className = 'px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-sm font-semibold';
+            updateChartData();
+        });
+
+        // Time range handler
+        document.getElementById('time-range').addEventListener('change', (e) => {
+            chartTimeRange = parseInt(e.target.value);
+            updateChartData();
+        });
+
+        // Page size handler
+        document.getElementById('page-size').addEventListener('change', (e) => {
+            pageSize = parseInt(e.target.value);
+            currentPage = 1; // Reset to first page
+            update();
+        });
+
         update();
+        updateChartData();
         setInterval(update, 5000);
+        setInterval(updateChartData, 60000); // Update chart every minute
     </script>
 </body>
 </html>`;
@@ -1246,8 +2017,22 @@ const homeHTML = `<!DOCTYPE html>
             </div>
 
             <!-- Footer -->
-            <div class="text-center text-white/60 text-sm">
+            <div class="text-center text-white/60 text-sm space-y-3">
                 <p>Powered by <span class="font-semibold text-white">Deno 🦕</span> | OpenAI Compatible API</p>
+                <div class="flex justify-center items-center gap-6 text-xs">
+                    <a href="https://github.com/dext7r/ZtoApi" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">
+                        📦 项目地址
+                    </a>
+                    <span class="text-white/40">|</span>
+                    <a href="https://github.com/libaxuan/ZtoApi" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">
+                        🔗 原仓库
+                    </a>
+                    <span class="text-white/40">|</span>
+                    <a href="https://linux.do/t/topic/1000335" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">
+                        💬 交流讨论
+                    </a>
+                </div>
+                <p class="text-white/50 text-xs italic pt-2">欲买桂花同载酒 终不似 少年游</p>
             </div>
         </div>
     </div>
@@ -1292,7 +2077,7 @@ const apiDocsHTML = `<!DOCTYPE html>
             <p class="text-gray-700 mb-4">ZtoApi 是一个为 Z.ai GLM-4.5 模型提供 OpenAI 兼容 API 接口的代理服务器。</p>
             <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
                 <p class="text-sm text-gray-600 mb-2">基础 URL</p>
-                <code class="text-purple-700 font-mono text-lg">http://localhost:${PORT}/v1</code>
+                <code class="text-purple-700 font-mono text-lg">https://zto2api.deno.dev/v1</code>
             </div>
         </div>
 
@@ -1314,7 +2099,7 @@ const apiDocsHTML = `<!DOCTYPE html>
                 </div>
                 <p class="text-gray-700 mb-3">获取可用模型列表</p>
                 <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-                    <pre class="text-green-400 font-mono text-sm">curl http://localhost:${PORT}/v1/models \\
+                    <pre class="text-green-400 font-mono text-sm">curl https://zto2api.deno.dev/v1/models \\
   -H "Authorization: Bearer ${DEFAULT_KEY}"</pre>
                 </div>
             </div>
@@ -1350,7 +2135,7 @@ const apiDocsHTML = `<!DOCTYPE html>
 
                 <h4 class="font-semibold text-gray-900 mb-3">请求示例</h4>
                 <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
-                    <pre class="text-green-400 font-mono text-sm">curl -X POST http://localhost:${PORT}/v1/chat/completions \\
+                    <pre class="text-green-400 font-mono text-sm">curl -X POST https://zto2api.deno.dev/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${DEFAULT_KEY}" \\
   -d '{
@@ -1371,7 +2156,7 @@ const apiDocsHTML = `<!DOCTYPE html>
 
 client = openai.OpenAI(
     api_key="${DEFAULT_KEY}",
-    base_url="http://localhost:${PORT}/v1"
+    base_url="https://zto2api.deno.dev/v1"
 )
 
 response = client.chat.completions.create(
@@ -1406,6 +2191,7 @@ async function handler(req: Request): Promise<Response> {
 
   // Routes
   if (path === "/" && req.method === "GET") {
+    stats.homePageViews++;
     return new Response(homeHTML, {
       status: 200,
       headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -1413,7 +2199,7 @@ async function handler(req: Request): Promise<Response> {
   }
 
   if (path === "/v1/models" && req.method === "GET") {
-    return handleModels(req);
+    return await handleModels(req);
   }
 
   if (path === "/v1/chat/completions" && req.method === "POST") {
@@ -1443,14 +2229,58 @@ async function handler(req: Request): Promise<Response> {
     }
 
     if (path === "/dashboard/stats" && req.method === "GET") {
-      return new Response(JSON.stringify(stats), {
+      // Get top 3 models
+      const modelEntries = Array.from(stats.modelUsage.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3);
+      const topModels = modelEntries.map(([model, count]) => ({ model, count }));
+
+      // Convert stats to JSON-serializable format
+      const statsResponse = {
+        ...stats,
+        modelUsage: undefined, // Remove Map
+        topModels, // Add top 3 models
+      };
+
+      return new Response(JSON.stringify(statsResponse), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     }
 
     if (path === "/dashboard/requests" && req.method === "GET") {
-      return new Response(JSON.stringify(liveRequests), {
+      const page = parseInt(url.searchParams.get("page") || "1");
+      const pageSize = parseInt(url.searchParams.get("pageSize") || "20");
+      const start = (page - 1) * pageSize;
+      const end = start + pageSize;
+
+      const paginatedRequests = liveRequests.slice().reverse().slice(start, end);
+
+      return new Response(JSON.stringify({
+        requests: paginatedRequests,
+        total: liveRequests.length,
+        page,
+        pageSize,
+        totalPages: Math.ceil(liveRequests.length / pageSize),
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (path === "/dashboard/hourly" && req.method === "GET") {
+      const hours = parseInt(url.searchParams.get("hours") || "24");
+      const hourlyStats = await getHourlyStats(hours);
+      return new Response(JSON.stringify(hourlyStats), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (path === "/dashboard/daily" && req.method === "GET") {
+      const days = parseInt(url.searchParams.get("days") || "30");
+      const dailyStats = await getDailyStats(days);
+      return new Response(JSON.stringify(dailyStats), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -1472,5 +2302,14 @@ if (DASHBOARD_ENABLED) {
   console.log(`📊 Dashboard: http://localhost:${PORT}/dashboard`);
 }
 console.log(`📖 API Docs: http://localhost:${PORT}/docs`);
+
+// Initialize database and start cleanup task
+await initDB();
+
+// Schedule daily stats aggregation and cleanup (runs every hour)
+setInterval(async () => {
+  await saveDailyStats();
+  await cleanupOldData();
+}, 60 * 60 * 1000);
 
 Deno.serve({ port: PORT }, handler);
