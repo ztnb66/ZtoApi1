@@ -16,6 +16,42 @@ const ENABLE_THINKING = Deno.env.get("ENABLE_THINKING") === "true";
 
 // Browser headers for upstream requests
 const X_FE_VERSION = "prod-fe-1.0.70";
+
+// Browser fingerprint generator
+function generateBrowserHeaders(chatID: string, authToken: string) {
+  const chromeVersion = Math.floor(Math.random() * 3) + 128; // 128-130
+  const edgeVersion = chromeVersion;
+
+  const userAgents = [
+    `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion}.0.0.0 Safari/537.36 Edg/${edgeVersion}.0.0.0`,
+    `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion}.0.0.0 Safari/537.36`,
+    `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion}.0.0.0 Safari/537.36`,
+  ];
+
+  const platforms = ['"Windows"', '"macOS"', '"Linux"'];
+  const randomUA = userAgents[Math.floor(Math.random() * userAgents.length)];
+  const randomPlatform = platforms[Math.floor(Math.random() * platforms.length)];
+
+  return {
+    "Content-Type": "application/json",
+    "Accept": "*/*",
+    "User-Agent": randomUA,
+    "Authorization": `Bearer ${authToken}`,
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "sec-ch-ua": `"Chromium";v="${chromeVersion}", "Not(A:Brand";v="24", "Microsoft Edge";v="${edgeVersion}"`,
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": randomPlatform,
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "X-FE-Version": X_FE_VERSION,
+    "Origin": ORIGIN_BASE,
+    "Referer": `${ORIGIN_BASE}/c/${chatID}`,
+    "Priority": "u=1, i",
+  };
+}
+
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0";
 const SEC_CH_UA = '"Not;A=Brand";v="99", "Microsoft Edge";v="139", "Chromium";v="139"';
@@ -634,21 +670,12 @@ async function callUpstream(
 ): Promise<Response> {
   debugLog("Calling upstream:", UPSTREAM_URL);
 
+  // Generate dynamic browser headers for better fingerprinting
+  const headers = generateBrowserHeaders(chatID, authToken);
+
   const response = await fetch(UPSTREAM_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json, text/event-stream",
-      "User-Agent": BROWSER_UA,
-      "Authorization": `Bearer ${authToken}`,
-      "Accept-Language": "zh-CN",
-      "sec-ch-ua": SEC_CH_UA,
-      "sec-ch-ua-mobile": SEC_CH_UA_MOB,
-      "sec-ch-ua-platform": SEC_CH_UA_PLAT,
-      "X-FE-Version": X_FE_VERSION,
-      "Origin": ORIGIN_BASE,
-      "Referer": `${ORIGIN_BASE}/c/${chatID}`,
-    },
+    headers: headers,
     body: JSON.stringify(upstreamReq),
   });
 
@@ -758,7 +785,7 @@ async function handleStreamResponse(
                 upstreamData.error || upstreamData.data?.error ||
                 upstreamData.data?.data?.error
               ) {
-                debugLog("Upstream error detected");
+                debugLog("Upstream error detected:", JSON.stringify(upstreamData));
                 const endChunk: OpenAIResponse = {
                   id: `chatcmpl-${Date.now()}`,
                   object: "chat.completion.chunk",
@@ -907,7 +934,7 @@ async function handleNonStreamResponse(
       if (!line.startsWith("data: ")) continue;
 
       const dataStr = line.substring(6);
-      if (!dataStr) continue;
+      if (!dataStr || dataStr === "[DONE]") continue; // Skip empty or DONE markers
 
       try {
         const upstreamData: UpstreamData = JSON.parse(dataStr);
@@ -915,7 +942,7 @@ async function handleNonStreamResponse(
         if (upstreamData.data.delta_content) {
           let out = upstreamData.data.delta_content;
           if (upstreamData.data.phase === "thinking") {
-            out = transformThinking(out);
+            out = transformThinking(out, enableThinking);
           }
           if (out) {
             fullContent += out;
