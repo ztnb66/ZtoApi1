@@ -1,0 +1,21 @@
+# Build stage
+FROM denoland/deno:alpine AS builder
+WORKDIR /app
+COPY deno.json main.ts ./
+RUN deno cache main.ts
+
+# Final stage
+FROM denoland/deno:alpine
+WORKDIR /app
+COPY --from=builder /app /app
+
+# Labels
+LABEL maintainer="ZtoApi Contributors"
+LABEL description="ZAI to GLM-4.5 API (Deno)"
+LABEL version="2.0.0"
+
+# Expose port
+EXPOSE 9090
+
+# Run the application
+CMD ["deno", "run", "--allow-net", "--allow-env", "--allow-read", "main.ts"]
