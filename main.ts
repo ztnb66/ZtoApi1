@@ -790,6 +790,147 @@ const dashboardHTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
+// Home page HTML
+const homeHTML = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZtoApi - OpenAI兼容API代理</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .subtitle {
+            text-align: center;
+            opacity: 0.9;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        .status {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .status-item:last-child { border-bottom: none; }
+        .status-label { font-weight: 500; }
+        .status-value {
+            font-family: 'Courier New', monospace;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .links {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+        }
+        .link-card {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            text-decoration: none;
+            color: white;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+        .link-card:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: translateY(-2px);
+        }
+        .link-icon { font-size: 2em; margin-bottom: 10px; }
+        .link-title { font-weight: 600; margin-bottom: 5px; }
+        .link-desc { font-size: 0.9em; opacity: 0.8; }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            opacity: 0.7;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🦕 ZtoApi</h1>
+        <p class="subtitle">OpenAI 兼容 API 代理 for Z.ai GLM-4.5</p>
+
+        <div class="status">
+            <div class="status-item">
+                <span class="status-label">状态</span>
+                <span class="status-value">🟢 运行中</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">模型</span>
+                <span class="status-value">${MODEL_NAME}</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">端口</span>
+                <span class="status-value">${PORT}</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">运行时</span>
+                <span class="status-value">Deno 🦕</span>
+            </div>
+        </div>
+
+        <div class="links">
+            <a href="/docs" class="link-card">
+                <div class="link-icon">📖</div>
+                <div class="link-title">API 文档</div>
+                <div class="link-desc">查看完整的 API 使用文档</div>
+            </a>
+
+            <a href="/dashboard" class="link-card">
+                <div class="link-icon">📊</div>
+                <div class="link-title">Dashboard</div>
+                <div class="link-desc">实时监控和统计信息</div>
+            </a>
+
+            <a href="/v1/models" class="link-card">
+                <div class="link-icon">🤖</div>
+                <div class="link-title">模型列表</div>
+                <div class="link-desc">查看可用的模型</div>
+            </a>
+        </div>
+
+        <div class="footer">
+            Powered by Deno 🦕 | OpenAI Compatible API
+        </div>
+    </div>
+</body>
+</html>`;
+
 // API docs HTML (simplified)
 const apiDocsHTML = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -864,6 +1005,13 @@ async function handler(req: Request): Promise<Response> {
   }
 
   // Routes
+  if (path === "/" && req.method === "GET") {
+    return new Response(homeHTML, {
+      status: 200,
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
+  }
+
   if (path === "/v1/models" && req.method === "GET") {
     return handleModels(req);
   }
