@@ -14,16 +14,15 @@ const DEFAULT_STREAM = Deno.env.get("DEFAULT_STREAM") !== "false";
 const DASHBOARD_ENABLED = Deno.env.get("DASHBOARD_ENABLED") !== "false";
 const ENABLE_THINKING = Deno.env.get("ENABLE_THINKING") === "true";
 
-// Browser headers for upstream requests
-const X_FE_VERSION = "prod-fe-1.0.70";
+// Browser headers for upstream requests (2025-09-30 更新：修复426错误)
+const X_FE_VERSION = "prod-fe-1.0.94"; // 更新：1.0.70 → 1.0.94
 
 // Browser fingerprint generator
-function generateBrowserHeaders(chatID: string, authToken: string) {
-  const chromeVersion = Math.floor(Math.random() * 3) + 128; // 128-130
-  const edgeVersion = chromeVersion;
+function generateBrowserHeaders(chatID: string, authToken: string): Record<string, string> {
+  const chromeVersion = Math.floor(Math.random() * 3) + 138; // 138-140 (更新：Chrome 140)
 
   const userAgents = [
-    `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion}.0.0.0 Safari/537.36 Edg/${edgeVersion}.0.0.0`,
+    `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion}.0.0.0 Safari/537.36`,
     `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion}.0.0.0 Safari/537.36`,
     `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion}.0.0.0 Safari/537.36`,
   ];
@@ -39,7 +38,7 @@ function generateBrowserHeaders(chatID: string, authToken: string) {
     "Authorization": `Bearer ${authToken}`,
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
     "Accept-Encoding": "gzip, deflate, br, zstd",
-    "sec-ch-ua": `"Chromium";v="${chromeVersion}", "Not(A:Brand";v="24", "Microsoft Edge";v="${edgeVersion}"`,
+    "sec-ch-ua": `"Chromium";v="${chromeVersion}", "Not=A?Brand";v="24", "Google Chrome";v="${chromeVersion}"`, // 更新：Chrome 140 格式
     "sec-ch-ua-mobile": "?0",
     "sec-ch-ua-platform": randomPlatform,
     "sec-fetch-dest": "empty",
@@ -52,11 +51,6 @@ function generateBrowserHeaders(chatID: string, authToken: string) {
   };
 }
 
-const BROWSER_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0";
-const SEC_CH_UA = '"Not;A=Brand";v="99", "Microsoft Edge";v="139", "Chromium";v="139"';
-const SEC_CH_UA_MOB = "?0";
-const SEC_CH_UA_PLAT = '"Windows"';
 const ORIGIN_BASE = "https://chat.z.ai";
 
 // Anonymous token enabled
@@ -603,16 +597,21 @@ function getClientIP(req: Request): string {
 // Get anonymous token
 async function getAnonymousToken(): Promise<string> {
   try {
+    // 使用 Chrome 140 的 User-Agent
+    const chromeVersion = 140;
+    const userAgent = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion}.0.0.0 Safari/537.36`;
+    const secChUa = `"Chromium";v="${chromeVersion}", "Not=A?Brand";v="24", "Google Chrome";v="${chromeVersion}"`;
+
     const response = await fetch(`${ORIGIN_BASE}/api/v1/auths/`, {
       method: "GET",
       headers: {
-        "User-Agent": BROWSER_UA,
+        "User-Agent": userAgent,
         "Accept": "*/*",
         "Accept-Language": "zh-CN,zh;q=0.9",
         "X-FE-Version": X_FE_VERSION,
-        "sec-ch-ua": SEC_CH_UA,
-        "sec-ch-ua-mobile": SEC_CH_UA_MOB,
-        "sec-ch-ua-platform": SEC_CH_UA_PLAT,
+        "sec-ch-ua": secChUa,
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
         "Origin": ORIGIN_BASE,
         "Referer": `${ORIGIN_BASE}/`,
       },
@@ -668,15 +667,40 @@ async function callUpstream(
   chatID: string,
   authToken: string,
 ): Promise<Response> {
+  // 构建请求体
+  const reqBody = JSON.stringify(upstreamReq);
+
   debugLog("Calling upstream:", UPSTREAM_URL);
+  debugLog("Request body:", reqBody);
+
+  // 生成 X-Signature - 基于请求体的 SHA-256 哈希（426错误修复）
+  const encoder = new TextEncoder();
+  const data = encoder.encode(reqBody);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const signature = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+
+  debugLog("Generated X-Signature:", signature);
 
   // Generate dynamic browser headers for better fingerprinting
-  const headers = generateBrowserHeaders(chatID, authToken);
+  const headers: Record<string, string> = generateBrowserHeaders(chatID, authToken);
+
+  // 添加 X-Signature header
+  headers["X-Signature"] = signature;
+
+  // 添加额外的请求头
+  headers["Connection"] = "keep-alive";
+  headers["sec-fetch-dest"] = "empty";
+  headers["sec-fetch-mode"] = "cors";
+  headers["sec-fetch-site"] = "same-origin";
+
+  // 添加 Cookie
+  headers["Cookie"] = `token=${authToken}`;
 
   const response = await fetch(UPSTREAM_URL, {
     method: "POST",
     headers: headers,
-    body: JSON.stringify(upstreamReq),
+    body: reqBody,
   });
 
   debugLog("Upstream response status:", response.status);
@@ -1023,6 +1047,10 @@ async function handleModels(req: Request): Promise<Response> {
     }
 
     // Request models from upstream
+    const chromeVersion = 140;
+    const modelsUserAgent = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion}.0.0.0 Safari/537.36`;
+    const secChUa = `"Chromium";v="${chromeVersion}", "Not=A?Brand";v="24", "Google Chrome";v="${chromeVersion}"`;
+
     const upstreamResponse = await fetch("https://chat.z.ai/api/models", {
       method: "GET",
       headers: {
@@ -1030,11 +1058,12 @@ async function handleModels(req: Request): Promise<Response> {
         "Accept-Language": "zh-CN",
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`,
-        "User-Agent": BROWSER_UA,
+        "User-Agent": modelsUserAgent,
         "Referer": "https://chat.z.ai/",
-        "sec-ch-ua": SEC_CH_UA,
-        "sec-ch-ua-mobile": SEC_CH_UA_MOB,
-        "sec-ch-ua-platform": SEC_CH_UA_PLAT,
+        "X-FE-Version": X_FE_VERSION,
+        "sec-ch-ua": secChUa,
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin",
