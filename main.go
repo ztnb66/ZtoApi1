@@ -3,11 +3,13 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -70,11 +72,11 @@ const (
 	NANOSECONDS_TO_SECONDS = 1000000000 // 纳秒转秒的倍数
 )
 
-// 伪装前端头部（来自抓包）
+// 伪装前端头部（2025-09-30 更新：修复426错误）
 const (
-	X_FE_VERSION   = "prod-fe-1.0.70"
-	BROWSER_UA     = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36 Edg/139.0.0.0"
-	SEC_CH_UA      = "\"Not;A=Brand\";v=\"99\", \"Microsoft Edge\";v=\"139\", \"Chromium\";v=\"139\""
+	X_FE_VERSION   = "prod-fe-1.0.94" // 更新：1.0.70 → 1.0.94
+	BROWSER_UA     = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36" // 更新：Chrome 139 → 140
+	SEC_CH_UA      = "\"Chromium\";v=\"140\", \"Not=A?Brand\";v=\"24\", \"Google Chrome\";v=\"140\"" // 更新：Chrome 140
 	SEC_CH_UA_MOB  = "?0"
 	SEC_CH_UA_PLAT = "\"Windows\""
 	ORIGIN_BASE    = "https://chat.z.ai"
@@ -1513,20 +1515,27 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	// 选择本次对话使用的token
+	// 选择本次对话使用的token：优先使用配置的ZAI_TOKEN，否则获取匿名token
 	authToken := ZAI_TOKEN
-	if ANON_TOKEN_ENABLED {
+	if authToken == "" && ANON_TOKEN_ENABLED {
 		if t, err := getAnonymousToken(); err == nil {
 			authToken = t
-			debugLog("匿名token获取成功: %s...", func() string {
+			debugLog("使用匿名token: %s...", func() string {
 				if len(t) > TOKEN_DISPLAY_LENGTH {
 					return t[:TOKEN_DISPLAY_LENGTH]
 				}
 				return t
 			}())
 		} else {
-			debugLog("匿名token获取失败，回退固定token: %v", err)
+			debugLog("匿名token获取失败: %v", err)
 		}
+	} else if authToken != "" {
+		debugLog("使用配置的ZAI_TOKEN: %s...", func() string {
+			if len(authToken) > TOKEN_DISPLAY_LENGTH {
+				return authToken[:TOKEN_DISPLAY_LENGTH]
+			}
+			return authToken
+		}())
 	}
 
 	// 调用上游API
@@ -1544,26 +1553,73 @@ func callUpstreamWithHeaders(upstreamReq UpstreamRequest, refererChatID string, 
 		return nil, err
 	}
 
-	debugLog("调用上游API: %s", UPSTREAM_URL)
+	// 构建带URL参数的完整URL
+	baseURL := UPSTREAM_URL
+	timestamp := fmt.Sprintf("%d", time.Now().UnixMilli())
+	
+	// 生成UUID (简化版，使用crypto/rand会更好)
+	requestID := fmt.Sprintf("%x-%x-%x-%x-%x", 
+		time.Now().UnixNano(), time.Now().Unix(), 
+		time.Now().Nanosecond(), time.Now().Second(), time.Now().Minute())
+	userID := fmt.Sprintf("%x-%x-%x-%x-%x",
+		time.Now().Unix(), time.Now().Nanosecond(),
+		time.Now().Second(), time.Now().Minute(), time.Now().Hour())
+	
+	// 构建URL参数 - 添加所有必要的指纹参数
+	fullURL := fmt.Sprintf("%s?timestamp=%s&requestId=%s&user_id=%s&version=0.0.1&platform=web&token=%s"+
+		"&user_agent=%s&language=zh-CN&languages=zh-CN,zh&timezone=Asia/Shanghai"+
+		"&cookie_enabled=true&screen_width=1680&screen_height=1050&screen_resolution=1680x1050"+
+		"&viewport_height=812&viewport_width=1087&viewport_size=1087x812"+
+		"&color_depth=30&pixel_ratio=2"+
+		"&current_url=%s&pathname=/c/%s&search=&hash="+
+		"&host=chat.z.ai&hostname=chat.z.ai&protocol=https:&referrer="+
+		"&title=%s"+
+		"&timezone_offset=-480&local_time=%s&utc_time=%s"+
+		"&is_mobile=false&is_touch=false&max_touch_points=0"+
+		"&browser_name=Chrome&os_name=Mac+OS&signature_timestamp=%s",
+		baseURL, timestamp, requestID, userID, authToken,
+		url.QueryEscape(BROWSER_UA),
+		url.QueryEscape(ORIGIN_BASE+"/c/"+refererChatID), refererChatID,
+		url.QueryEscape("Z.ai Chat - Free AI powered by GLM-4.6"),
+		url.QueryEscape(time.Now().Format("2006-01-02T15:04:05.000Z")),
+		url.QueryEscape(time.Now().UTC().Format(time.RFC1123)),
+		timestamp,
+	)
+
+	debugLog("调用上游API: %s", fullURL)
 	debugLog("上游请求体: %s", string(reqBody))
 
-	req, err := http.NewRequest("POST", UPSTREAM_URL, bytes.NewBuffer(reqBody))
+	req, err := http.NewRequest("POST", fullURL, bytes.NewBuffer(reqBody))
 	if err != nil {
 		debugLog("创建HTTP请求失败: %v", err)
 		return nil, err
 	}
 
+	// 生成 X-Signature - 基于请求体的 SHA-256 哈希（426错误修复）
+	hash := sha256.Sum256(reqBody)
+	signature := fmt.Sprintf("%x", hash)
+	
+	debugLog("生成签名: %s (基于请求体SHA256)", signature)
+
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Language", "zh-CN")
 	req.Header.Set("User-Agent", BROWSER_UA)
 	req.Header.Set("Authorization", "Bearer "+authToken)
-	req.Header.Set("Accept-Language", "zh-CN")
 	req.Header.Set("sec-ch-ua", SEC_CH_UA)
 	req.Header.Set("sec-ch-ua-mobile", SEC_CH_UA_MOB)
 	req.Header.Set("sec-ch-ua-platform", SEC_CH_UA_PLAT)
 	req.Header.Set("X-FE-Version", X_FE_VERSION)
+	req.Header.Set("X-Signature", signature)
 	req.Header.Set("Origin", ORIGIN_BASE)
 	req.Header.Set("Referer", ORIGIN_BASE+"/c/"+refererChatID)
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("Sec-Fetch-Dest", "empty")
+	req.Header.Set("Sec-Fetch-Mode", "cors")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	
+	// 添加Cookie
+	req.Header.Set("Cookie", fmt.Sprintf("token=%s", authToken))
 
 	client := &http.Client{Timeout: UPSTREAM_TIMEOUT * time.Second}
 	resp, err := client.Do(req)
@@ -1790,9 +1846,14 @@ func handleNonStreamResponseWithIDs(w http.ResponseWriter, upstreamReq UpstreamR
 	var fullContent strings.Builder
 	scanner := bufio.NewScanner(resp.Body)
 	debugLog("开始收集完整响应内容")
+	lineCount := 0
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		lineCount++
+		
+		debugLog("收到原始行[%d]: %s", lineCount, line)
+		
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
@@ -1802,10 +1863,17 @@ func handleNonStreamResponseWithIDs(w http.ResponseWriter, upstreamReq UpstreamR
 			continue
 		}
 
+		debugLog("解析SSE数据: %s", dataStr)
+
 		var upstreamData UpstreamData
 		if err := json.Unmarshal([]byte(dataStr), &upstreamData); err != nil {
+			debugLog("JSON解析失败: %v", err)
 			continue
 		}
+
+		debugLog("解析成功 - type:%s phase:%s content_len:%d done:%v", 
+			upstreamData.Type, upstreamData.Data.Phase, 
+			len(upstreamData.Data.DeltaContent), upstreamData.Data.Done)
 
 		if upstreamData.Data.DeltaContent != "" {
 			out := upstreamData.Data.DeltaContent
@@ -1813,6 +1881,7 @@ func handleNonStreamResponseWithIDs(w http.ResponseWriter, upstreamReq UpstreamR
 				out = transformThinkingContent(out)
 			}
 			if out != "" {
+				debugLog("添加内容: %s", out)
 				fullContent.WriteString(out)
 			}
 		}
@@ -1822,6 +1891,8 @@ func handleNonStreamResponseWithIDs(w http.ResponseWriter, upstreamReq UpstreamR
 			break
 		}
 	}
+	
+	debugLog("扫描器共处理%d行", lineCount)
 
 	finalContent := fullContent.String()
 	debugLog("内容收集完成，最终长度: %d", len(finalContent))
