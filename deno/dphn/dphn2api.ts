@@ -753,6 +753,10 @@ const homeHTML = `<!DOCTYPE html>
                     <a href="https://linux.do/t/topic/1002983" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors flex items-center gap-1">
                         <span>💬</span> 讨论交流
                     </a>
+                    <span class="text-white/40">|</span>
+                    <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/dphn/dphn2api.ts" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors flex items-center gap-1">
+                        <span>⭐</span> GitHub
+                    </a>
                 </div>
                 <p class="text-white/50 text-xs italic pt-2">欲买桂花同载酒 终不似 少年游</p>
             </div>
@@ -929,7 +933,7 @@ console.log(response.choices[0].message.content);</pre>
 
     <footer class="bg-white border-t mt-12 py-6">
         <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
-            <p>Powered by <span class="font-semibold">Deno 🦕</span> | <a href="/" class="text-blue-600 hover:underline">返回首页</a></p>
+            <p>Powered by <span class="font-semibold">Deno 🦕</span> | <a href="/" class="text-blue-600 hover:underline">返回首页</a> | <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/dphn/dphn2api.ts" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">⭐ GitHub</a></p>
         </div>
     </footer>
 </body>
@@ -1171,7 +1175,7 @@ const dashboardHTML = `<!DOCTYPE html>
 
     <footer class="bg-white border-t mt-12 py-6">
         <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
-            <p>Powered by <span class="font-semibold">Deno 🦕</span> | <a href="/" class="text-blue-600 hover:underline">返回首页</a></p>
+            <p>Powered by <span class="font-semibold">Deno 🦕</span> | <a href="/" class="text-blue-600 hover:underline">返回首页</a> | <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/dphn/dphn2api.ts" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">⭐ GitHub</a></p>
         </div>
     </footer>
 
@@ -1515,7 +1519,7 @@ print(response.choices[0].message.content)</pre>
 
     <footer class="bg-white border-t mt-12 py-6">
         <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
-            <p>Powered by <span class="font-semibold">Deno 🦕</span></p>
+            <p>Powered by <span class="font-semibold">Deno 🦕</span> | <a href="/" class="text-blue-600 hover:underline">返回首页</a> | <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/dphn/dphn2api.ts" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">⭐ GitHub</a></p>
         </div>
     </footer>
 </body>
