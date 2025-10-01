@@ -1,0 +1,9 @@
+{
+  "tasks": {
+    "start": "deno run --allow-net --allow-env dphn2api.ts",
+    "dev": "deno run --allow-net --allow-env --watch dphn2api.ts"
+  },
+  "compilerOptions": {
+    "lib": ["deno.window"]
+  }
+}
