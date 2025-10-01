@@ -174,8 +174,8 @@ function generateBrowserHeaders() {
 // Map OpenAI model name to Dolphin model ID and extract template suffix
 // 验证并映射模型名称
 function mapModelName(openAIModel: string): { modelId: string; template: string; error?: string } {
-  // 支持的 template 列表
-  const validTemplates = ["logical", "summary", "code-beginner", "code-advanced"];
+  // 支持的 template 列表（顺序很重要：长的放前面，避免误匹配）
+  const validTemplates = ["code-beginner", "code-advanced", "logical", "summary"];
 
   // 默认结果
   const defaultResult = {
@@ -194,31 +194,32 @@ function mapModelName(openAIModel: string): { modelId: string; template: string;
     };
   }
 
-  // 检查是否有 "-" 后缀指定 template
-  const parts = openAIModel.split("-");
-
-  if (parts.length === 1) {
-    // 没有后缀，使用默认 template
-    return defaultResult;
+  // 检查模型名称是否以某个有效的 template 结尾
+  for (const template of validTemplates) {
+    if (openAIModel.endsWith(`-${template}`)) {
+      debugLog(`从模型名称提取 template: ${template}`);
+      return {
+        modelId: "dolphinpod:24B",
+        template: template,
+      };
+    }
   }
 
-  // 提取 template（最后一个 "-" 之后的部分）
-  const templateSuffix = parts[parts.length - 1].trim();
+  // 没有找到匹配的 template 后缀，使用默认值
+  // 如果模型名称中包含 "-" 但不匹配任何已知 template，返回错误
+  if (openAIModel.includes("-")) {
+    // 提取用户尝试使用的后缀
+    const parts = openAIModel.split("-");
+    const attemptedSuffix = parts.slice(1).join("-"); // 重新组合除第一部分外的所有部分
 
-  // 验证 template 是否合法
-  if (validTemplates.includes(templateSuffix)) {
-    debugLog(`从模型名称提取 template: ${templateSuffix}`);
     return {
-      modelId: "dolphinpod:24B",
-      template: templateSuffix,
+      ...defaultResult,
+      error: `不支持的 template "${attemptedSuffix}"。支持的 templates: ${validTemplates.join(", ")}`
     };
   }
 
-  // 无效的 template 后缀，返回错误
-  return {
-    ...defaultResult,
-    error: `不支持的 template "${templateSuffix}"。支持的 templates: ${validTemplates.join(", ")}`
-  };
+  // 没有后缀，使用默认 template
+  return defaultResult;
 }
 
 // Record request statistics
