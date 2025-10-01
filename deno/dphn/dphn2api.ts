@@ -43,6 +43,13 @@ interface LiveRequest {
   model?: string;
 }
 
+interface HistoryDataPoint {
+  timestamp: Date;
+  totalRequests: number;
+  successRate: number;
+  avgResponseTime: number;
+}
+
 const stats: RequestStats = {
   totalRequests: 0,
   successfulRequests: 0,
@@ -60,6 +67,29 @@ const stats: RequestStats = {
 };
 
 const liveRequests: LiveRequest[] = [];
+
+// 历史数据记录（每分钟记录一次，最多保留60个数据点，即1小时）
+const historyData: HistoryDataPoint[] = [];
+const MAX_HISTORY_POINTS = 60;
+
+// 定时记录历史数据（每分钟一次）
+setInterval(() => {
+  const successRate = stats.totalRequests > 0
+    ? (stats.successfulRequests / stats.totalRequests) * 100
+    : 0;
+
+  historyData.push({
+    timestamp: new Date(),
+    totalRequests: stats.totalRequests,
+    successRate,
+    avgResponseTime: stats.averageResponseTime,
+  });
+
+  // 保持数组大小在限制内
+  if (historyData.length > MAX_HISTORY_POINTS) {
+    historyData.shift();
+  }
+}, 60000); // 每分钟记录一次
 
 // OpenAI request/response types
 interface Message {
@@ -141,16 +171,54 @@ function generateBrowserHeaders() {
   };
 }
 
-// Map OpenAI model name to Dolphin model ID
-function mapModelName(_openAIModel: string): string {
-  // Default to dolphinpod:24B for any model request
-  return "dolphinpod:24B";
-}
+// Map OpenAI model name to Dolphin model ID and extract template suffix
+// 验证并映射模型名称
+function mapModelName(openAIModel: string): { modelId: string; template: string; error?: string } {
+  // 支持的 template 列表
+  const validTemplates = ["logical", "summary", "code-beginner", "code-advanced"];
 
-// Get template from request or use default
-function getTemplate(_openAIModel: string): string {
-  // Can be extended to map different models to different templates
-  return DEFAULT_TEMPLATE;
+  // 默认结果
+  const defaultResult = {
+    modelId: "dolphinpod:24B",
+    template: DEFAULT_TEMPLATE
+  };
+
+  // 检查基础模型名称是否匹配
+  const modelLower = openAIModel.toLowerCase();
+  const isDolphinModel = modelLower.startsWith("dolphin");
+
+  if (!isDolphinModel) {
+    return {
+      ...defaultResult,
+      error: `不支持的模型 "${openAIModel}"。支持的模型格式：Dolphin 24B 或 Dolphin 24B-{template}`
+    };
+  }
+
+  // 检查是否有 "-" 后缀指定 template
+  const parts = openAIModel.split("-");
+
+  if (parts.length === 1) {
+    // 没有后缀，使用默认 template
+    return defaultResult;
+  }
+
+  // 提取 template（最后一个 "-" 之后的部分）
+  const templateSuffix = parts[parts.length - 1].trim();
+
+  // 验证 template 是否合法
+  if (validTemplates.includes(templateSuffix)) {
+    debugLog(`从模型名称提取 template: ${templateSuffix}`);
+    return {
+      modelId: "dolphinpod:24B",
+      template: templateSuffix,
+    };
+  }
+
+  // 无效的 template 后缀，返回错误
+  return {
+    ...defaultResult,
+    error: `不支持的 template "${templateSuffix}"。支持的 templates: ${validTemplates.join(", ")}`
+  };
 }
 
 // Record request statistics
@@ -250,15 +318,35 @@ async function handleModels(req: Request): Promise<Response> {
     const data = await response.json();
     debugLog("Models response:", data);
 
-    // Transform to OpenAI format
-    const openAIModels = {
-      object: "list",
-      data: data.data.map((model: { id: string; label: string }) => ({
+    // Available templates from Dolphin API
+    const templates = ["logical", "summary", "code-beginner", "code-advanced"];
+
+    // Transform to OpenAI format - create model variants for each template
+    const modelVariants: any[] = [];
+
+    data.data.forEach((model: { id: string; label: string }) => {
+      // Add base model without template suffix
+      modelVariants.push({
         id: model.label,
         object: "model",
         created: Math.floor(Date.now() / 1000),
         owned_by: "dolphin-ai",
-      })),
+      });
+
+      // Add model variants with template suffixes
+      templates.forEach(template => {
+        modelVariants.push({
+          id: `${model.label}-${template}`,
+          object: "model",
+          created: Math.floor(Date.now() / 1000),
+          owned_by: "dolphin-ai",
+        });
+      });
+    });
+
+    const openAIModels = {
+      object: "list",
+      data: modelVariants,
     };
 
     const duration = Date.now() - startTime;
@@ -319,8 +407,28 @@ async function handleChatCompletions(req: Request): Promise<Response> {
     debugLog("OpenAI request:", JSON.stringify(openAIReq, null, 2));
 
     const isStreaming = openAIReq.stream ?? DEFAULT_STREAM;
-    const dolphinModel = mapModelName(openAIReq.model);
-    const template = getTemplate(openAIReq.model);
+
+    // Validate and extract modelId and template from model name
+    const modelMapping = mapModelName(openAIReq.model);
+
+    // 如果模型验证失败，返回错误
+    if (modelMapping.error) {
+      const duration = Date.now() - startTime;
+      recordRequest("POST", "/v1/chat/completions", 400, duration, userAgent, openAIReq.model);
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: modelMapping.error,
+            type: "invalid_request_error",
+            param: "model",
+            code: "model_not_found"
+          }
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    const { modelId, template } = modelMapping;
 
     // Filter and transform messages for Dolphin AI
     // Dolphin only accepts "user" and "assistant" roles, not "system"
@@ -341,7 +449,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
     // Build upstream request - only include fields that Dolphin supports
     const upstreamReq: DolphinRequest = {
       messages: transformedMessages,
-      model: dolphinModel,
+      model: modelId,
       template: template,
     };
 
@@ -1114,6 +1222,14 @@ const dashboardHTML = `<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- History Charts -->
+        <div class="bg-white rounded-xl shadow-sm border p-6 mb-8">
+            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                <span class="text-2xl mr-2">📈</span> 历史趋势（最近1小时）
+            </h3>
+            <div id="history-chart" style="width: 100%; height: 400px;"></div>
+        </div>
+
         <!-- Top Models Card -->
         <div class="bg-white rounded-xl shadow-sm border p-6 mb-8">
             <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
@@ -1179,9 +1295,113 @@ const dashboardHTML = `<!DOCTYPE html>
         </div>
     </footer>
 
+    <!-- ECharts CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+
     <script>
         let currentPage = 1;
         let pageSize = 20;
+        let historyChart = null;
+
+        // 初始化 ECharts
+        function initChart() {
+            const chartDom = document.getElementById('history-chart');
+            historyChart = echarts.init(chartDom);
+
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'cross'
+                    }
+                },
+                legend: {
+                    data: ['总请求数', '成功率(%)', '平均响应时间(ms)']
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    boundaryGap: false,
+                    data: []
+                },
+                yAxis: [
+                    {
+                        type: 'value',
+                        name: '请求数 / 成功率',
+                        position: 'left'
+                    },
+                    {
+                        type: 'value',
+                        name: '响应时间(ms)',
+                        position: 'right'
+                    }
+                ],
+                series: [
+                    {
+                        name: '总请求数',
+                        type: 'line',
+                        data: [],
+                        smooth: true,
+                        itemStyle: { color: '#3b82f6' }
+                    },
+                    {
+                        name: '成功率(%)',
+                        type: 'line',
+                        data: [],
+                        smooth: true,
+                        itemStyle: { color: '#10b981' }
+                    },
+                    {
+                        name: '平均响应时间(ms)',
+                        type: 'line',
+                        yAxisIndex: 1,
+                        data: [],
+                        smooth: true,
+                        itemStyle: { color: '#f59e0b' }
+                    }
+                ]
+            };
+
+            historyChart.setOption(option);
+        }
+
+        // 更新历史数据图表
+        async function updateChart() {
+            try {
+                const res = await fetch('/dashboard/history');
+                const data = await res.json();
+
+                if (!data.data || data.data.length === 0) {
+                    return;
+                }
+
+                const timestamps = data.data.map(p => {
+                    const d = new Date(p.timestamp);
+                    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+                });
+                const totalRequests = data.data.map(p => p.totalRequests);
+                const successRates = data.data.map(p => p.successRate.toFixed(1));
+                const avgTimes = data.data.map(p => Math.round(p.avgResponseTime));
+
+                historyChart.setOption({
+                    xAxis: {
+                        data: timestamps
+                    },
+                    series: [
+                        { data: totalRequests },
+                        { data: successRates },
+                        { data: avgTimes }
+                    ]
+                });
+            } catch (error) {
+                console.error('Error updating chart:', error);
+            }
+        }
 
         async function update() {
             try {
@@ -1271,10 +1491,22 @@ const dashboardHTML = `<!DOCTYPE html>
                     document.getElementById('prev-page').disabled = data.page <= 1;
                     document.getElementById('next-page').disabled = data.page >= data.totalPages;
                 }
+
+                // 更新图表
+                if (historyChart) {
+                    updateChart();
+                }
             } catch (e) {
                 console.error('Update error:', e);
             }
         }
+
+        // 页面加载时初始化
+        window.addEventListener('DOMContentLoaded', () => {
+            initChart();
+            update();
+            setInterval(update, 5000);
+        });
 
         // Pagination handlers
         document.getElementById('prev-page').addEventListener('click', () => {
@@ -1295,9 +1527,6 @@ const dashboardHTML = `<!DOCTYPE html>
             currentPage = 1; // Reset to first page
             update();
         });
-
-        update();
-        setInterval(update, 5000);
     </script>
 </body>
 </html>`;
@@ -1592,6 +1821,19 @@ async function handler(req: Request): Promise<Response> {
       fastestResponse: stats.fastestResponse,
       slowestResponse: stats.slowestResponse,
       topModels: topModels,
+    }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (DASHBOARD_ENABLED && path === "/dashboard/history") {
+    return new Response(JSON.stringify({
+      data: historyData.map(point => ({
+        timestamp: point.timestamp.toISOString(),
+        totalRequests: point.totalRequests,
+        successRate: point.successRate,
+        avgResponseTime: point.avgResponseTime,
+      }))
     }), {
       headers: { "Content-Type": "application/json" },
     });

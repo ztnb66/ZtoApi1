@@ -144,12 +144,81 @@ console.log(response.choices[0].message.content);
 
 ## 模板类型
 
-Dolphin AI 支持以下模板类型(通过 `DPHN_DEFAULT_TEMPLATE` 环境变量配置):
+Dolphin AI 支持以下模板类型。有两种方式指定模板：
 
-- `logical` - 逻辑推理(默认)
-- `summary` - 内容总结
-- `code-beginner` - 代码入门
-- `code-advanced` - 高级编程
+### 方式一：通过模型名称后缀指定 (推荐)
+
+支持在模型名称后添加 `-{template}` 后缀来指定模板类型：
+
+| 模型名称 | Template | 说明 |
+|---------|----------|------|
+| `Dolphin 24B` | `logical` | 默认模板，逻辑推理 |
+| `Dolphin 24B-logical` | `logical` | 逻辑推理 |
+| `Dolphin 24B-summary` | `summary` | 内容总结 |
+| `Dolphin 24B-code-beginner` | `code-beginner` | 代码入门 |
+| `Dolphin 24B-code-advanced` | `code-advanced` | 高级编程 |
+
+**示例：**
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="sk-dphn-key",
+    base_url="https://dphn2api.deno.dev/v1"
+)
+
+# 使用 summary 模板
+response = client.chat.completions.create(
+    model="Dolphin 24B-summary",  # 通过模型名称指定模板
+    messages=[{"role": "user", "content": "Summarize this article..."}]
+)
+```
+
+```bash
+# curl 示例
+curl -X POST https://dphn2api.deno.dev/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-dphn-key" \
+  -d '{
+    "model": "Dolphin 24B-code-advanced",
+    "messages": [{"role": "user", "content": "Write a Python function..."}]
+  }'
+```
+
+### 方式二：通过环境变量配置默认模板
+
+设置 `DPHN_DEFAULT_TEMPLATE` 环境变量来指定全局默认模板(默认为 `logical`)：
+
+```bash
+export DPHN_DEFAULT_TEMPLATE=summary
+deno task start
+```
+
+**注意：** 如果模型名称中指定了 template 后缀，会优先使用后缀指定的模板，忽略环境变量设置。
+
+### 获取可用模型列表
+
+调用 `/v1/models` 端点可以查看所有可用的模型变体：
+
+```bash
+curl https://dphn2api.deno.dev/v1/models \
+  -H "Authorization: Bearer sk-dphn-key"
+```
+
+返回示例：
+```json
+{
+  "object": "list",
+  "data": [
+    {"id": "Dolphin 24B", "object": "model", "owned_by": "dolphin-ai"},
+    {"id": "Dolphin 24B-logical", "object": "model", "owned_by": "dolphin-ai"},
+    {"id": "Dolphin 24B-summary", "object": "model", "owned_by": "dolphin-ai"},
+    {"id": "Dolphin 24B-code-beginner", "object": "model", "owned_by": "dolphin-ai"},
+    {"id": "Dolphin 24B-code-advanced", "object": "model", "owned_by": "dolphin-ai"}
+  ]
+}
+```
 
 ## 部署到 Deno Deploy
 
