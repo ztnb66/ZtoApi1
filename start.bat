@@ -2,7 +2,7 @@
 chcp 65001 >nul
 setlocal enabledelayedexpansion
 
-echo 🚀 启动 OpenAI兼容API代理 for Z.ai GLM-4.5
+echo 🚀 启动 OpenAI兼容API代理 for Z.ai GLM-4.6
 
 REM 检查环境变量文件
 set ENV_FILE=
@@ -67,7 +67,7 @@ if defined DEFAULT_KEY (
 if defined MODEL_NAME (
     echo 🤖 模型名称: %MODEL_NAME%
 ) else (
-    echo 🤖 模型名称: GLM-4.5
+    echo 🤖 模型名称: GLM-4.6
 )
 
 echo 🌐 端口: !TARGET_PORT!
@@ -97,7 +97,7 @@ if defined ZAI_TOKEN (
 echo.
 echo 🎯 启动服务...
 echo 📍 服务地址: http://localhost:!TARGET_PORT!
-echo 📍 Roo CDOE 基础URL: http://localhost:!TARGET_PORT!/v1
+echo 📍 基础URL: http://localhost:!TARGET_PORT!/v1
 echo 📖 API文档: http://localhost:!TARGET_PORT!/docs
 echo 📊 Dashboard: http://localhost:!TARGET_PORT!/dashboard
 echo.

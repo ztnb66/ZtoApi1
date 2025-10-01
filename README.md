@@ -1,8 +1,21 @@
-# OpenAI兼容API代理 for Z.ai GLM-4.5
+# OpenAI兼容API代理 for Z.ai GLM-4.6
 
-这是一个为Z.ai GLM-4.5模型提供OpenAI兼容API接口的代理服务器。它允许你使用标准的OpenAI API格式与Z.ai的GLM-4.5模型进行交互，支持流式和非流式响应。
+这是一个为Z.ai GLM-4.6模型提供OpenAI兼容API接口的代理服务器。它允许你使用标准的OpenAI API格式与Z.ai的GLM-4.6模型进行交互，支持流式和非流式响应。
 
 > **注意**: 本项目来自fork  [OpenAI-Compatible-API-Proxy-for-Z](https://github.com/kbykb/OpenAI-Compatible-API-Proxy-for-Z)二次开发
+
+## 🎯 最新更新 (2025-09-30)
+
+**✅ 成功修复426客户端版本错误**
+
+Z.ai在2025年9月30日更新了客户端验证机制，本项目已完成适配：
+
+- ✅ 更新前端版本号至 1.0.94
+- ✅ 更新User-Agent至Chrome 140
+- ✅ 实现X-Signature签名验证（SHA-256）
+- ✅ 非流式和流式响应均正常工作
+
+详细修复说明请查看：[FIX_426_ERROR.md](./FIX_426_ERROR.md)
 
 
 ## ✨ 主要功能
@@ -21,7 +34,7 @@
 ### 环境要求
 
 - Go 1.23 或更高版本
-- Z.ai 的访问令牌
+- Z.ai 的访问令牌（可选，支持匿名模式）
 
 ### 本地部署
 
@@ -33,8 +46,10 @@
 
 2. **配置环境变量**
    ```bash
-   cp config.env .env.local
-   # 编辑 .env.local 文件，设置你的 ZAI_TOKEN
+   # 复制配置模板
+   cp .env.example .env.local
+   # 编辑 .env.local 文件，根据需要修改配置
+   nano .env.local
    ```
 
 3. **启动服务**
@@ -101,7 +116,7 @@
     - 设置以下环境变量：
     - `ZAI_TOKEN`: Z.ai 的访问令牌 (可选，不提供将自动获取随机匿名token)
     - `DEFAULT_KEY`: 客户端API密钥 (可选，默认: sk-your-key)
-    - `MODEL_NAME`: 显示的模型名称 (可选，默认: GLM-4.5)
+    - `MODEL_NAME`: 显示的模型名称 (可选，默认: GLM-4.6)
     - `PORT`: 服务监听端口 (Render会自动设置)
 
 3. 部署完成后，使用Render提供的URL作为OpenAI API的base_url
@@ -169,7 +184,7 @@ docker run -p 9090:9090 \
 | 变量名 | 说明 | 默认值 | 示例 |
 |--------|------|--------|------|
 | `DEFAULT_KEY` | 客户端API密钥 | `sk-your-key` | `sk-my-api-key` |
-| `MODEL_NAME` | 显示模型名称 | `GLM-4.5` | `GLM-4.5-Pro` |
+| `MODEL_NAME` | 显示模型名称 | `GLM-4.6` | `GLM-4.6-Pro` |
 | `PORT` | 服务监听端口 | `9090` | `9000` |
 | `DEBUG_MODE` | 调试模式开关 | `true` | `false` |
 | `DEFAULT_STREAM` | 默认流式响应 | `true` | `false` |
@@ -186,19 +201,32 @@ docker run -p 9090:9090 \
 
 #### 支持的配置文件（按优先级排序）
 
-1. `.env.local` - 本地环境配置（推荐）
-2. `.env` - 环境配置
-3. `config.env` - 配置模板
+1. **系统环境变量** - 最高优先级
+2. **`.env.local`** - 本地环境配置（推荐，已自动加载）
+3. **`.env`** - 标准环境配置（已自动加载）
+4. **`.env.example`** - 配置模板（仅供参考）
+
+> **💡 新功能**: 项目现在会自动加载 `.env.local` 和 `.env` 文件，无需手动设置环境变量！
 
 #### 配置文件示例
 
 ```bash
-# 复制配置文件
-cp config.env .env.local
+# 复制配置模板
+cp .env.example .env.local
 
 # 编辑配置文件
 nano .env.local
+
+# 启动服务（会自动加载 .env.local）
+./start.sh
 ```
+
+#### 配置加载顺序说明
+
+1. 系统首先尝试加载 `.env.local` 文件（优先级更高）
+2. 然后加载 `.env` 文件
+3. 最后读取系统环境变量（如果已设置，会覆盖文件中的配置）
+4. 未配置的选项使用默认值
 
 ### 🔐 获取 Z.ai Token
 
@@ -227,7 +255,7 @@ nano .env.local
 # .env.local
 ZAI_TOKEN=eyJhbGciOiJFUzI1NiIs...
 DEFAULT_KEY=sk-my-secret-key
-MODEL_NAME=GLM-4.5-Pro
+MODEL_NAME=GLM-4.6-Pro
 PORT=9000
 DEBUG_MODE=false
 ```
@@ -238,7 +266,7 @@ DEBUG_MODE=false
 # .env.production
 ZAI_TOKEN=your_production_token
 DEFAULT_KEY=sk-production-key
-MODEL_NAME=GLM-4.5
+MODEL_NAME=GLM-4.6
 PORT=9090
 DEBUG_MODE=false
 DEFAULT_STREAM=true
@@ -250,7 +278,7 @@ DEFAULT_STREAM=true
 # .env.development
 ZAI_TOKEN=your_dev_token
 DEFAULT_KEY=sk-dev-key
-MODEL_NAME=GLM-4.5-Dev
+MODEL_NAME=GLM-4.6-Dev
 PORT=8080
 DEBUG_MODE=true
 DEFAULT_STREAM=true
@@ -329,7 +357,7 @@ client = openai.OpenAI(
 
 # 非流式请求
 response = client.chat.completions.create(
-    model="GLM-4.5",
+    model="GLM-4.6",
     messages=[{"role": "user", "content": "你好，请介绍一下自己"}]
 )
 
@@ -337,7 +365,7 @@ print(response.choices[0].message.content)
 
 # 流式请求
 response = client.chat.completions.create(
-    model="GLM-4.5",
+    model="GLM-4.6",
     messages=[{"role": "user", "content": "请写一首关于春天的诗"}],
     stream=True
 )
@@ -348,7 +376,7 @@ for chunk in response:
 
 # 启用思考功能的请求
 response = client.chat.completions.create(
-    model="GLM-4.5",
+    model="GLM-4.6",
     messages=[{"role": "user", "content": "请分析一下这个问题"}],
     enable_thinking=True
 )
@@ -364,7 +392,7 @@ curl -X POST http://localhost:9090/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
   -d '{
-    "model": "GLM-4.5",
+    "model": "GLM-4.6",
     "messages": [{"role": "user", "content": "你好"}],
     "stream": false
   }'
@@ -374,7 +402,7 @@ curl -X POST http://localhost:9090/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
   -d '{
-    "model": "GLM-4.5",
+    "model": "GLM-4.6",
     "messages": [{"role": "user", "content": "你好"}],
     "stream": true
   }'
@@ -384,7 +412,7 @@ curl -X POST http://localhost:9090/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
   -d '{
-    "model": "GLM-4.5",
+    "model": "GLM-4.6",
     "messages": [{"role": "user", "content": "请分析一下这个问题"}],
     "enable_thinking": true
   }'
@@ -397,7 +425,7 @@ const fetch = require('node-fetch');
 
 async function chatWithGLM(message, stream = false, enableThinking = null) {
   const requestBody = {
-    model: 'GLM-4.5',
+    model: 'GLM-4.6',
     messages: [{ role: 'user', content: message }],
     stream: stream
   };
@@ -466,27 +494,34 @@ chatWithGLM('请分析一下这个问题', false, true);
 
 ### 常见问题
 
-1. **连接失败**
+1. **426错误 (Your client version check is failed)**
+    - ✅ **已修复**: 项目已更新至最新版本
+    - 如果仍然出现此错误，请确保：
+      - 代码已更新到最新版本
+      - 服务已重新编译和启动
+    - 详情请查看：[FIX_426_ERROR.md](./FIX_426_ERROR.md)
+
+2. **连接失败**
     - 检查服务是否正常运行：`curl http://localhost:9090/v1/models`
     - 访问API文档：`http://localhost:9090/docs`
     - 确认端口配置正确
 
-2. **认证失败**
+3. **认证失败**
     - 检查 `DEFAULT_KEY` 环境变量设置
     - 确认请求头中的 `Authorization` 格式正确
 
-3. **Z.ai Token无效**
+4. **Z.ai Token无效**
     - 检查 `ZAI_TOKEN` 环境变量设置
     - 确认Token未过期
 
-4. **思考过程显示异常**
+5. **思考过程显示异常**
     - 检查 `DEBUG_MODE` 是否启用
     - 查看服务日志获取详细信息
 
-5. **端口被占用**: 修改 `PORT` 环境变量或停止占用端口的服务
-6. **权限不足**: 确保启动脚本有执行权限
-7. **配置未生效**: 重启服务或检查配置文件语法
-8. **流式响应问题**: 确认 `DEFAULT_STREAM` 设置正确，检查客户端是否支持流式响应
+6. **端口被占用**: 修改 `PORT` 环境变量或停止占用端口的服务
+7. **权限不足**: 确保启动脚本有执行权限
+8. **配置未生效**: 重启服务或检查配置文件语法
+9. **流式响应问题**: 确认 `DEFAULT_STREAM` 设置正确，检查客户端是否支持流式响应
 
 ### 调试模式
 
@@ -535,10 +570,12 @@ go run main.go
 
 本项目采用 MIT 许可证。详情请参阅 [LICENSE](LICENSE) 文件。
 
+## 📚 相关文档
+
+- [FIX_426_ERROR.md](./FIX_426_ERROR.md) - 426错误修复详细说明
+
 ## ⚠️ 免责声明
 
-本项目与 Z.ai 官方无关，使用前请确保遵守 Z.ai 的服务条款。开发者不对因使用本项目而产生的任何问题负责。
-本项目与 Z.ai 官方无关，使用前请确保遵守 Z.ai 的服务条款。开发者不对因使用本项目而产生的任何问题负责。
 本项目与 Z.ai 官方无关，使用前请确保遵守 Z.ai 的服务条款。开发者不对因使用本项目而产生的任何问题负责。
 
 ## 📞 联系方式

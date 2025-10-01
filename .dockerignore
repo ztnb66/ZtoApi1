@@ -1,4 +1,35 @@
+# Git
 .git
+.gitignore
+
+# Documentation
 README.md
+LICENSE
+*.md
+
+# Environment and Config files
+.env*
+config.env
+
+# Log files
 *.log
+server.log
+
+# Build artifacts
 main
+ztoapi
+*.exe
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/

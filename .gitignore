@@ -61,6 +61,10 @@ secrets.json
 # Compiled binaries
 /bin/
 /cmd/*/bin
+ztoapi
+ztoapi.exe
+main
+main.exe
 
 # Coverage reports
 coverage.txt
