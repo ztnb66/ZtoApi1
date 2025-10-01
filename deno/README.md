@@ -17,7 +17,9 @@ deno/
 │   ├── README.md      # 使用文档
 │   └── ...
 │
-├── ztoapi/            # (即将重构为模板形式)
+├── zai/               # 🧠 Z.ai GLM-4.5 代理实现
+│   ├── main.ts        # 完整实现
+│   ├── README.md      # 使用文档
 │   └── ...
 │
 └── TEMPLATE_GUIDE.md  # 📖 模板使用指南
@@ -26,6 +28,15 @@ deno/
 ## 🚀 快速开始
 
 ### 方式一：使用现有实现
+
+如果你想使用 Z.ai GLM-4.5：
+
+```bash
+cd zai
+cp .env.example .env
+# 编辑 .env 配置
+deno task start
+```
 
 如果你想使用 Dolphin AI：
 
@@ -52,8 +63,8 @@ cd ../my-service
 | 项目 | 目标服务 | 状态 | 特点 |
 |------|---------|------|------|
 | **template** | 通用模板 | ✅ 完成 | 可配置框架，包含完整功能 |
+| **zai** | Z.ai GLM-4.5 | ✅ 完成 | Thinking 模式、匿名 token、X-Signature |
 | **dphn** | Dolphin AI | ✅ 完成 | 多模板、system 消息转换 |
-| **ztoapi** | Z.ai GLM-4.5 | 🔄 待重构 | Thinking 模式、匿名 token |
 
 ## 🎯 模板特性
 

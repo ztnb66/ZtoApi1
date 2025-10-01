@@ -2076,8 +2076,8 @@ const homeHTML = `<!DOCTYPE html>
             <div class="text-center text-white/60 text-sm space-y-3">
                 <p>Powered by <span class="font-semibold text-white">Deno 🦕</span> | OpenAI Compatible API</p>
                 <div class="flex justify-center items-center gap-6 text-xs">
-                    <a href="https://github.com/dext7r/ZtoApi" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">
-                        📦 项目地址
+                    <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/zai/main.ts" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">
+                        📦 源码地址
                     </a>
                     <span class="text-white/40">|</span>
                     <a href="https://github.com/libaxuan/ZtoApi" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">

@@ -1,7 +1,7 @@
 # Build stage
 FROM denoland/deno:alpine AS builder
 WORKDIR /app
-COPY deno.json main.ts ./
+COPY deno/zai/deno.json deno/zai/main.ts ./
 RUN deno cache main.ts
 
 # Final stage

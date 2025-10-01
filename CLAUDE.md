@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ZtoApi is an OpenAI-compatible API proxy for Z.ai GLM-4.5 model. The project exists in two implementations:
 - **Go version** (`main.go`) - Original implementation
-- **Deno version** (`main.ts`) - Modern TypeScript rewrite with Deno runtime
+- **Deno version** (`deno/zai/main.ts`) - Modern TypeScript rewrite with Deno runtime
 
 Both versions provide the same functionality: proxying OpenAI-format API requests to Z.ai's upstream API while handling authentication, streaming, and response transformation.
 
@@ -15,10 +15,13 @@ Both versions provide the same functionality: proxying OpenAI-format API request
 ### Deno Version (Recommended)
 
 ```bash
+# Navigate to Deno implementation
+cd deno/zai
+
 # Start server (production)
 deno task start
-# Or: ./start-deno.sh (macOS/Linux)
-# Or: start-deno.bat (Windows)
+# Or: ./start.sh (macOS/Linux)
+# Or: start.bat (Windows)
 
 # Development mode with auto-reload
 deno task dev
@@ -152,7 +155,7 @@ The Deno version requires these permissions (all specified in deno.json tasks):
 - `--allow-read` - Read config files like .env.local (optional but recommended)
 
 ### Type Safety
-All interfaces are fully typed in `main.ts`. Key types:
+All interfaces are fully typed in `deno/zai/main.ts`. Key types:
 - `OpenAIRequest/OpenAIResponse` - Client-facing API format
 - `UpstreamRequest/UpstreamData` - Z.ai upstream format
 - `RequestStats/LiveRequest` - Monitoring data structures
@@ -194,17 +197,21 @@ When error detected, immediately ends stream with finish_reason: "stop".
 
 ## File Organization
 
-- `main.ts` - Deno implementation (single file, ~920 lines)
+- `deno/zai/main.ts` - Deno implementation (single file, ~2300 lines)
 - `main.go` - Go implementation (single file, ~1800 lines)
-- `deno.json` - Deno tasks and compiler config
+- `deno/zai/deno.json` - Deno tasks and compiler config
 - `go.mod` - Go module definition (no external dependencies)
-- `start-deno.sh/bat` - Deno startup scripts with env loading and port checking
+- `deno/zai/start.sh/bat` - Deno startup scripts with env loading and port checking
 - `start.sh/bat` - Go startup scripts
 - `Dockerfile.deno` - Multi-stage Docker build for Deno
 - `Dockerfile` - Multi-stage Docker build for Go
 - `config.env` - Template for environment configuration
-- `README-deno.md` - Deno version documentation
+- `deno/zai/README.md` - Deno version documentation
 - `README.md` - Original Go version documentation
+- `deno/` - Deno implementations directory
+  - `template/` - Reusable template for creating new proxies
+  - `zai/` - Z.ai GLM-4.5 proxy
+  - `dphn/` - Dolphin AI proxy
 
 ## When Working on This Codebase
 

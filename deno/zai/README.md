@@ -52,8 +52,8 @@ irm https://deno.land/install.ps1 | iex
 3. **启动服务**
    ```bash
    # 使用启动脚本（推荐）
-   ./start-deno.sh          # macOS/Linux
-   start-deno.bat           # Windows
+   ./start.sh          # macOS/Linux
+   start.bat           # Windows
 
    # 或直接运行
    deno task start
@@ -104,12 +104,12 @@ irm https://deno.land/install.ps1 | iex
 
 **macOS/Linux:**
 ```bash
-./start-deno.sh
+./start.sh
 ```
 
 **Windows:**
 ```cmd
-start-deno.bat
+start.bat
 ```
 
 #### 2. 手动设置环境变量
