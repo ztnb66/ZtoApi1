@@ -380,6 +380,7 @@ async function handleModels(req: Request): Promise<Response> {
 async function handleChatCompletions(req: Request): Promise<Response> {
   const startTime = Date.now();
   const userAgent = req.headers.get("user-agent") || "unknown";
+  let requestModel: string | undefined; // 用于在错误处理中记录模型
 
   try {
     // Validate authorization
@@ -405,6 +406,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
 
     // Parse request
     const openAIReq: OpenAIRequest = await req.json();
+    requestModel = openAIReq.model; // 保存模型名称用于错误记录
     debugLog("OpenAI request:", JSON.stringify(openAIReq, null, 2));
 
     const isStreaming = openAIReq.stream ?? DEFAULT_STREAM;
@@ -485,7 +487,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
   } catch (error) {
     debugLog("Error in chat completions:", error);
     const duration = Date.now() - startTime;
-    recordRequest("POST", "/v1/chat/completions", 500, duration, userAgent);
+    recordRequest("POST", "/v1/chat/completions", 500, duration, userAgent, requestModel);
 
     return new Response(
       JSON.stringify({
@@ -1229,6 +1231,11 @@ const dashboardHTML = `<!DOCTYPE html>
                 <span class="text-2xl mr-2">📈</span> 历史趋势（最近1小时）
             </h3>
             <div id="history-chart" style="width: 100%; height: 400px;"></div>
+            <div id="history-empty" class="hidden text-center py-20">
+                <div class="text-6xl mb-4">📊</div>
+                <p class="text-gray-500 text-lg mb-2">暂无历史数据</p>
+                <p class="text-gray-400 text-sm">系统每分钟记录一次数据，请稍后查看</p>
+            </div>
         </div>
 
         <!-- Top Models Card -->
@@ -1377,9 +1384,19 @@ const dashboardHTML = `<!DOCTYPE html>
                 const res = await fetch('/dashboard/history');
                 const data = await res.json();
 
+                const chartElement = document.getElementById('history-chart');
+                const emptyElement = document.getElementById('history-empty');
+
                 if (!data.data || data.data.length === 0) {
+                    // 显示空状态，隐藏图表
+                    chartElement.style.display = 'none';
+                    emptyElement.classList.remove('hidden');
                     return;
                 }
+
+                // 隐藏空状态，显示图表
+                chartElement.style.display = 'block';
+                emptyElement.classList.add('hidden');
 
                 const timestamps = data.data.map(p => {
                     const d = new Date(p.timestamp);
