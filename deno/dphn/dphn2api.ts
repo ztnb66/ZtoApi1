@@ -234,6 +234,7 @@ interface I18nText {
   poweredBy: string;
   backHome: string;
   github: string;
+  discussion: string;
   exampleMessage: string;
   exampleMessageLong: string;
 }
@@ -448,6 +449,7 @@ const translations: Record<Language, I18nText> = {
     poweredBy: "Powered by",
     backHome: "返回首页",
     github: "GitHub",
+    discussion: "交流反馈",
     exampleMessage: "你好",
     exampleMessageLong: "你好，请介绍一下你自己",
   },
@@ -660,6 +662,7 @@ const translations: Record<Language, I18nText> = {
     poweredBy: "Powered by",
     backHome: "Back to Home",
     github: "GitHub",
+    discussion: "Discussion & Feedback",
     exampleMessage: "Hello",
     exampleMessageLong: "Hello, please introduce yourself",
   },
@@ -872,6 +875,7 @@ const translations: Record<Language, I18nText> = {
     poweredBy: "Powered by",
     backHome: "ホームに戻る",
     github: "GitHub",
+    discussion: "フィードバック",
     exampleMessage: "こんにちは",
     exampleMessageLong: "こんにちは、自己紹介をお願いします",
   },
@@ -1041,7 +1045,7 @@ function getHomePage(lang: Language, t: I18nText, currentUrl: string): string {
 
         <!-- Footer -->
         <div class="text-center text-white/60 text-sm">
-            <p>${t.poweredBy} <span class="font-semibold text-white">Deno 🦕</span> | <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/dphn/dphn2api.ts" target="_blank" class="text-blue-200 hover:underline">⭐ GitHub</a></p>
+            <p>${t.poweredBy} <span class="font-semibold text-white">Deno 🦕</span> | <a href="https://linux.do/t/topic/1002983/1" target="_blank" rel="noopener noreferrer" class="text-blue-200 hover:underline">💬 ${t.discussion}</a> | <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/dphn/dphn2api.ts" target="_blank" rel="noopener noreferrer" class="text-blue-200 hover:underline">⭐ ${t.github}</a></p>
         </div>
     </div>
 </body>
@@ -1103,6 +1107,7 @@ function getDocsPage(lang: Language, t: I18nText, currentUrl: string): string {
     // Footer
     .replace('Powered by', t.poweredBy)
     .replace('<a href="/" class="text-blue-600 hover:underline">返回首页</a>', `<a href="/?lang=${lang}" class="text-blue-600 hover:underline">${t.backHome}</a>`)
+    .replace('💬 交流反馈', `💬 ${t.discussion}`)
     .replace('⭐ GitHub', `⭐ ${t.github}`);
 
   return html;
@@ -1166,6 +1171,7 @@ function getPlaygroundPage(lang: Language, t: I18nText, currentUrl: string): str
     // Footer
     .replace('Powered by', t.poweredBy)
     .replace('<a href="/" class="text-blue-600 hover:underline">返回首页</a>', `<a href="/?lang=${lang}" class="text-blue-600 hover:underline">${t.backHome}</a>`)
+    .replace('💬 交流反馈', `💬 ${t.discussion}`)
     .replace('⭐ GitHub', `⭐ ${t.github}`);
 
   return html;
@@ -1239,6 +1245,7 @@ function getDeployPage(lang: Language, t: I18nText, currentUrl: string): string 
     // Footer - using replaceAll to catch all occurrences in footer
     .replace('Powered by', t.poweredBy)
     .replaceAll('<a href="/" class="text-blue-600 hover:underline">返回首页</a>', `<a href="/?lang=${lang}" class="text-blue-600 hover:underline">${t.backHome}</a>`)
+    .replace('💬 交流反馈', `💬 ${t.discussion}`)
     .replace('⭐ GitHub', `⭐ ${t.github}`);
 
   return html;
@@ -1317,6 +1324,7 @@ function getDashboardPage(lang: Language, t: I18nText, currentUrl: string): stri
     // Footer
     .replace('Powered by', t.poweredBy)
     .replace('<a href="/" class="text-blue-600 hover:underline">返回首页</a>', `<a href="/?lang=${lang}" class="text-blue-600 hover:underline">${t.backHome}</a>`)
+    .replace('💬 交流反馈', `💬 ${t.discussion}`)
     .replace('⭐ GitHub', `⭐ ${t.github}`);
 
   return html;
@@ -2374,7 +2382,7 @@ console.log(response.choices[0].message.content);</pre>
 
     <footer class="bg-white border-t mt-12 py-6">
         <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
-            <p>Powered by <span class="font-semibold">Deno 🦕</span> | <a href="/" class="text-blue-600 hover:underline">返回首页</a> | <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/dphn/dphn2api.ts" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">⭐ GitHub</a></p>
+            <p>Powered by <span class="font-semibold">Deno 🦕</span> | <a href="/" class="text-blue-600 hover:underline">返回首页</a> | <a href="https://linux.do/t/topic/1002983/1" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">💬 交流反馈</a> | <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/dphn/dphn2api.ts" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">⭐ GitHub</a></p>
         </div>
     </footer>
 </body>
@@ -2630,7 +2638,7 @@ const dashboardHTML = `<!DOCTYPE html>
 
     <footer class="bg-white border-t mt-12 py-6">
         <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
-            <p>Powered by <span class="font-semibold">Deno 🦕</span> | <a href="/" class="text-blue-600 hover:underline">返回首页</a> | <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/dphn/dphn2api.ts" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">⭐ GitHub</a></p>
+            <p>Powered by <span class="font-semibold">Deno 🦕</span> | <a href="/" class="text-blue-600 hover:underline">返回首页</a> | <a href="https://linux.do/t/topic/1002983/1" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">💬 交流反馈</a> | <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/dphn/dphn2api.ts" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">⭐ GitHub</a></p>
         </div>
     </footer>
 
@@ -3132,7 +3140,7 @@ const playgroundHTML = `<!DOCTYPE html>
 
     <footer class="bg-white border-t mt-12 py-6">
         <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
-            <p>Powered by <span class="font-semibold">Deno 🦕</span> | <a href="/" class="text-blue-600 hover:underline">返回首页</a> | <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/dphn/dphn2api.ts" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">⭐ GitHub</a></p>
+            <p>Powered by <span class="font-semibold">Deno 🦕</span> | <a href="/" class="text-blue-600 hover:underline">返回首页</a> | <a href="https://linux.do/t/topic/1002983/1" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">💬 交流反馈</a> | <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/dphn/dphn2api.ts" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">⭐ GitHub</a></p>
         </div>
     </footer>
 
@@ -3607,7 +3615,7 @@ print(response.choices[0].message.content)</pre>
 
     <footer class="bg-white border-t mt-12 py-6">
         <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
-            <p>Powered by <span class="font-semibold">Deno 🦕</span> | <a href="/" class="text-blue-600 hover:underline">返回首页</a> | <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/dphn/dphn2api.ts" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">⭐ GitHub</a></p>
+            <p>Powered by <span class="font-semibold">Deno 🦕</span> | <a href="/" class="text-blue-600 hover:underline">返回首页</a> | <a href="https://linux.do/t/topic/1002983/1" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">💬 交流反馈</a> | <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/dphn/dphn2api.ts" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">⭐ GitHub</a></p>
         </div>
     </footer>
 </body>
