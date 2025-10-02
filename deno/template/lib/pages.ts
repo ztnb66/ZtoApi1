@@ -1,18 +1,29 @@
 // Common HTML page templates for OpenAI-compatible API proxy
 
-import type { ProxyConfig, RequestStats, LiveRequest } from "./types.ts";
+import type { ProxyConfig, RequestStats, LiveRequest, Language, I18nTranslations } from "./types.ts";
 import { formatUptime, getTopModels } from "./utils.ts";
+import { getSeoMeta, getStructuredData } from "./seo.ts";
+import { getTranslations } from "./i18n.ts";
 
 /**
- * Generate common HTML head section
+ * Generate common HTML head section with SEO and i18n support
  */
-function getHtmlHead(title: string, config: ProxyConfig): string {
+function getHtmlHead(
+  title: string,
+  config: ProxyConfig,
+  lang: Language = "zh-CN",
+  pageDescription?: string,
+  currentUrl?: string
+): string {
+  const t = getTranslations(lang);
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${lang}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${title} - ${config.serviceName}</title>
+    ${getSeoMeta(config, title, pageDescription, currentUrl)}
+    ${getStructuredData(config, currentUrl)}
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @keyframes gradient-shift {
@@ -34,19 +45,47 @@ function getHtmlHead(title: string, config: ProxyConfig): string {
         .animate-delay-2 { animation-delay: 0.2s; }
         .animate-delay-3 { animation-delay: 0.3s; }
         .animate-delay-4 { animation-delay: 0.4s; }
+        /* Language Switcher */
+        .lang-switcher { position: fixed; top: 20px; right: 20px; z-index: 1000; }
+        .lang-switcher select {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 14px;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
     </style>
 </head>`;
 }
 
 /**
- * Generate common navigation links
+ * Generate language switcher
  */
-function getNavLinks(currentPath: string): string {
+export function getLanguageSwitcher(currentLang: Language = "zh-CN"): string {
+  return `
+    <div class="lang-switcher">
+        <select id="langSelect" onchange="window.location.href='?lang='+this.value">
+            <option value="zh-CN" ${currentLang === "zh-CN" ? "selected" : ""}>🇨🇳 中文</option>
+            <option value="en-US" ${currentLang === "en-US" ? "selected" : ""}>🇺🇸 English</option>
+            <option value="ja-JP" ${currentLang === "ja-JP" ? "selected" : ""}>🇯🇵 日本語</option>
+        </select>
+    </div>
+  `;
+}
+
+/**
+ * Generate common navigation links with i18n
+ */
+function getNavLinks(currentPath: string, t: I18nTranslations): string {
   const links = [
-    { href: "/", label: "首页" },
-    { href: "/docs", label: "API 文档" },
-    { href: "/deploy", label: "部署指南" },
-    { href: "/dashboard", label: "Dashboard" },
+    { href: "/", label: t.home },
+    { href: "/docs", label: t.docs },
+    { href: "/playground", label: t.playground },
+    { href: "/deploy", label: t.deploy },
+    { href: "/dashboard", label: t.dashboard },
   ];
 
   return links
@@ -82,15 +121,17 @@ function getFooter(config: ProxyConfig): string {
 /**
  * Generate homepage HTML
  */
-export function getHomePage(config: ProxyConfig): string {
-  return `${getHtmlHead("首页", config)}
+export function getHomePage(config: ProxyConfig, lang: Language = "zh-CN", currentUrl?: string): string {
+  const t = getTranslations(lang);
+  return `${getHtmlHead(t.homeTitle, config, lang, config.seoDescription, currentUrl)}
 <body class="min-h-screen gradient-animated bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500">
+    ${getLanguageSwitcher(lang)}
     <div class="container mx-auto px-4 py-12 max-w-5xl">
         <!-- Header -->
         <div class="text-center mb-12 animate-fade-in">
             <div class="text-7xl mb-4 animate-pulse">${config.serviceEmoji}</div>
             <h1 class="text-5xl font-bold text-white mb-3 drop-shadow-lg">${config.serviceName}</h1>
-            <p class="text-xl text-blue-100 max-w-2xl mx-auto">OpenAI 兼容的 API 代理服务</p>
+            <p class="text-xl text-blue-100 max-w-2xl mx-auto">${t.homeSubtitle}</p>
         </div>
 
         <!-- Status Cards -->
@@ -115,11 +156,17 @@ export function getHomePage(config: ProxyConfig): string {
         </div>
 
         <!-- Navigation Cards -->
-        <div class="grid md:grid-cols-4 gap-6 mb-8">
+        <div class="grid md:grid-cols-5 gap-6 mb-8">
             <a href="/docs" class="group bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 hover:bg-white/20 hover:border-white/40 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl animate-fade-in animate-delay-2">
                 <div class="text-5xl mb-4 group-hover:scale-110 transition-transform">📖</div>
                 <h3 class="text-white text-xl font-bold mb-2">API 文档</h3>
                 <p class="text-blue-100 text-sm">完整的使用文档和代码示例</p>
+            </a>
+
+            <a href="/playground" class="group bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 hover:bg-white/20 hover:border-white/40 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl animate-fade-in animate-delay-3">
+                <div class="text-5xl mb-4 group-hover:scale-110 transition-transform">🎮</div>
+                <h3 class="text-white text-xl font-bold mb-2">Playground</h3>
+                <p class="text-blue-100 text-sm">在线测试 API 请求和响应</p>
             </a>
 
             <a href="/deploy" class="group bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 hover:bg-white/20 hover:border-white/40 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl animate-fade-in animate-delay-3">
@@ -167,8 +214,11 @@ export function getHomePage(config: ProxyConfig): string {
 export function getDashboardPage(
   config: ProxyConfig,
   stats: RequestStats,
-  liveRequests: LiveRequest[]
+  liveRequests: LiveRequest[],
+  lang: Language = "zh-CN",
+  currentUrl?: string
 ): string {
+  const t = getTranslations(lang);
   const topModels = getTopModels(stats.modelUsage, 3);
   const successRate = stats.totalRequests > 0
     ? ((stats.successfulRequests / stats.totalRequests) * 100).toFixed(1)
@@ -177,8 +227,9 @@ export function getDashboardPage(
 
   const recentRequests = liveRequests.slice(0, 20);
 
-  return `${getHtmlHead("Dashboard", config)}
+  return `${getHtmlHead("Dashboard", config, lang, config.seoDescription, currentUrl)}
 <body class="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 gradient-animated">
+    ${getLanguageSwitcher(lang)}
     <div class="container mx-auto px-4 py-8 max-w-7xl">
         <!-- Header -->
         <div class="mb-8 flex justify-between items-center">
@@ -187,7 +238,7 @@ export function getDashboardPage(
                 <p class="text-blue-100">实时监控和性能统计</p>
             </div>
             <div class="text-right">
-                ${getNavLinks("/dashboard")}
+                ${getNavLinks("/dashboard", t)}
             </div>
         </div>
 

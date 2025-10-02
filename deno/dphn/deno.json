@@ -4,6 +4,16 @@
     "dev": "deno run --allow-net --allow-env --watch dphn2api.ts"
   },
   "compilerOptions": {
-    "lib": ["deno.window"]
+    "lib": [
+      "deno.window"
+    ]
+  },
+  "deploy": {
+    "project": "a7955268-b5bc-4c17-823a-ad7832a4347c",
+    "exclude": [
+      "**/node_modules"
+    ],
+    "include": [],
+    "entrypoint": "dphn2api.ts"
   }
 }

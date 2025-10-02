@@ -3,7 +3,7 @@
 
 export {};
 
-import type { ProxyConfig, RequestStats, LiveRequest, OpenAIRequest, Message } from "./lib/types.ts";
+import type { ProxyConfig, RequestStats, LiveRequest, OpenAIRequest, Message, Language } from "./lib/types.ts";
 import {
   generateBrowserHeaders,
   generateRequestId,
@@ -17,6 +17,8 @@ import {
 } from "./lib/utils.ts";
 import { getHomePage, getDashboardPage } from "./lib/pages.ts";
 import { getDocsPage, getDeployPage } from "./pages/docs-deploy.ts";
+import { getPlaygroundPage } from "./pages/playground.ts";
+import { detectLanguage, getLanguageFromUrl } from "./lib/i18n.ts";
 
 // ============================================================================
 // CONFIGURATION - Customize these values for your service
@@ -40,6 +42,13 @@ const CONFIG: ProxyConfig = {
   footerText: Deno.env.get("FOOTER_TEXT") || "智能对话，触手可及",
   discussionUrl: Deno.env.get("DISCUSSION_URL") || "https://github.com/your-repo/discussions",
   githubRepo: Deno.env.get("GITHUB_REPO") || "https://github.com/your-repo",
+
+  // SEO settings - Customize for better search engine visibility
+  seoTitle: Deno.env.get("SEO_TITLE") || "AI2Api - OpenAI Compatible API Proxy",
+  seoDescription: Deno.env.get("SEO_DESCRIPTION") || "A high-performance OpenAI-compatible API proxy service powered by Deno",
+  seoKeywords: Deno.env.get("SEO_KEYWORDS") || "OpenAI,API,Proxy,AI,Deno,TypeScript",
+  seoAuthor: Deno.env.get("SEO_AUTHOR") || "AI2Api",
+  seoOgImage: Deno.env.get("SEO_OG_IMAGE") || "",
 };
 
 // ============================================================================
@@ -342,6 +351,12 @@ async function handler(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
 
+  // Detect language from URL parameter or browser Accept-Language header
+  const urlLang = getLanguageFromUrl(url);
+  const browserLang = detectLanguage(req);
+  const lang: Language = urlLang || browserLang;
+  const currentUrl = url.toString();
+
   // API endpoints
   if (path === "/v1/models") {
     return handleModels(req);
@@ -351,27 +366,33 @@ async function handler(req: Request): Promise<Response> {
     return handleChatCompletions(req);
   }
 
-  // Web pages
+  // Web pages with i18n and SEO support
   if (path === "/" || path === "/index.html") {
-    return new Response(getHomePage(CONFIG), {
+    return new Response(getHomePage(CONFIG, lang, currentUrl), {
       headers: { "Content-Type": "text/html" },
     });
   }
 
   if (path === "/docs") {
-    return new Response(getDocsPage(CONFIG), {
+    return new Response(getDocsPage(CONFIG, lang, currentUrl), {
       headers: { "Content-Type": "text/html" },
     });
   }
 
   if (path === "/deploy") {
-    return new Response(getDeployPage(CONFIG), {
+    return new Response(getDeployPage(CONFIG, lang, currentUrl), {
+      headers: { "Content-Type": "text/html" },
+    });
+  }
+
+  if (path === "/playground") {
+    return new Response(getPlaygroundPage(CONFIG, lang, currentUrl), {
       headers: { "Content-Type": "text/html" },
     });
   }
 
   if (path === "/dashboard" && CONFIG.dashboardEnabled) {
-    return new Response(getDashboardPage(CONFIG, stats, liveRequests), {
+    return new Response(getDashboardPage(CONFIG, stats, liveRequests, lang, currentUrl), {
       headers: { "Content-Type": "text/html" },
     });
   }

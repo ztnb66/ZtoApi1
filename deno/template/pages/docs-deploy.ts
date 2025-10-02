@@ -1,23 +1,27 @@
 // Additional page templates: Docs and Deploy pages
 
-import type { ProxyConfig } from "./types.ts";
-import { getHtmlHead, getNavLinks, getFooter } from "./pages.ts";
+import type { ProxyConfig, Language } from "../lib/types.ts";
+import { getHtmlHead, getNavLinks, getFooter, getLanguageSwitcher } from "../lib/pages.ts";
+import { getTranslations } from "../lib/i18n.ts";
+import { getSeoMeta } from "../lib/seo.ts";
 
 /**
  * Generate API documentation page
  */
-export function getDocsPage(config: ProxyConfig, extraSections?: string): string {
-  return `${getHtmlHead("API 文档", config)}
+export function getDocsPage(config: ProxyConfig, lang: Language = "zh-CN", currentUrl?: string, extraSections?: string): string {
+  const t = getTranslations(lang);
+  return `${getHtmlHead(t.docsTitle, config, lang, config.seoDescription, currentUrl)}
 <body class="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 gradient-animated">
+    ${getLanguageSwitcher(lang)}
     <div class="container mx-auto px-4 py-8 max-w-4xl">
         <!-- Header -->
         <div class="mb-8 flex justify-between items-center">
             <div>
-                <h1 class="text-4xl font-bold text-white mb-2">📖 API 文档</h1>
-                <p class="text-blue-100">完整的使用指南和代码示例</p>
+                <h1 class="text-4xl font-bold text-white mb-2">📖 ${t.docsTitle}</h1>
+                <p class="text-blue-100">${t.docsSubtitle}</p>
             </div>
             <div class="text-right text-sm">
-                ${getNavLinks("/docs")}
+                ${getNavLinks("/docs", t)}
             </div>
         </div>
 
@@ -129,18 +133,20 @@ console.log(response.choices[0].message.content);</pre>
 /**
  * Generate deployment guide page
  */
-export function getDeployPage(config: ProxyConfig, extraContent?: string): string {
-  return `${getHtmlHead("部署指南", config)}
+export function getDeployPage(config: ProxyConfig, lang: Language = "zh-CN", currentUrl?: string, extraContent?: string): string {
+  const t = getTranslations(lang);
+  return `${getHtmlHead(t.deployTitle, config, lang, config.seoDescription, currentUrl)}
 <body class="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 gradient-animated">
+    ${getLanguageSwitcher(lang)}
     <div class="container mx-auto px-4 py-8 max-w-4xl">
         <!-- Header -->
         <div class="mb-8 flex justify-between items-center">
             <div>
-                <h1 class="text-4xl font-bold text-white mb-2">🚀 部署指南</h1>
-                <p class="text-blue-100">一键部署到 Deno Deploy</p>
+                <h1 class="text-4xl font-bold text-white mb-2">🚀 ${t.deployTitle}</h1>
+                <p class="text-blue-100">${t.deploySubtitle}</p>
             </div>
             <div class="text-right text-sm">
-                ${getNavLinks("/deploy")}
+                ${getNavLinks("/deploy", t)}
             </div>
         </div>
 
