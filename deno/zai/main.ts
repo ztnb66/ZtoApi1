@@ -7,6 +7,7 @@ export {};
 const UPSTREAM_URL = Deno.env.get("UPSTREAM_URL") || "https://chat.z.ai/api/chat/completions";
 const DEFAULT_KEY = Deno.env.get("DEFAULT_KEY") || "sk-your-key";
 const ZAI_TOKEN = Deno.env.get("ZAI_TOKEN") || "";
+const KV_URL = Deno.env.get("KV_URL") || "";  // Remote KV database URL
 const MODEL_NAME = Deno.env.get("MODEL_NAME") || "GLM-4.5";
 const PORT = parseInt(Deno.env.get("PORT") || "9090");
 const DEBUG_MODE = Deno.env.get("DEBUG_MODE") === "true" || true;
@@ -53,8 +54,10 @@ function generateBrowserHeaders(chatID: string, authToken: string): Record<strin
 
 const ORIGIN_BASE = "https://chat.z.ai";
 
-// Anonymous token enabled
-const ANON_TOKEN_ENABLED = true;
+// Token strategy configuration
+// Priority: ZAI_TOKEN > KV Token Pool > Anonymous Token
+const ANON_TOKEN_ENABLED = !ZAI_TOKEN && !KV_URL;
+const KV_TOKEN_POOL_ENABLED = !ZAI_TOKEN && !!KV_URL;
 
 // Thinking tags mode
 const THINK_TAGS_MODE = "strip"; // strip | think | raw
@@ -144,7 +147,60 @@ const stats: RequestStats = {
 
 const liveRequests: LiveRequest[] = [];
 
-// Initialize Deno KV database
+// Initialize Deno KV database for token pool
+let kvTokenPool: Deno.Kv | null = null;
+
+// Initialize KV token pool connection
+async function initKVTokenPool() {
+  if (!KV_URL) {
+    debugLog("KV_URL not configured, skipping KV token pool initialization");
+    return;
+  }
+
+  try {
+    kvTokenPool = await Deno.openKv(KV_URL);
+    debugLog(`KV token pool initialized: ${KV_URL}`);
+  } catch (error) {
+    console.error("Failed to initialize KV token pool:", error);
+    console.error("Will fall back to anonymous token mode");
+  }
+}
+
+// Get random token from KV token pool
+async function getTokenFromKVPool(): Promise<string | null> {
+  if (!kvTokenPool) {
+    debugLog("KV token pool not initialized");
+    return null;
+  }
+
+  try {
+    // Fetch all accounts from KV
+    const accounts: Array<{ email: string; password: string; token: string }> = [];
+    const entries = kvTokenPool.list({ prefix: ["zai_accounts"] });
+
+    for await (const entry of entries) {
+      const data = entry.value as any;
+      if (data && data.token) {
+        accounts.push({ email: data.email, password: data.password, token: data.token });
+      }
+    }
+
+    if (accounts.length === 0) {
+      debugLog("No accounts found in KV token pool");
+      return null;
+    }
+
+    // Randomly select an account
+    const randomAccount = accounts[Math.floor(Math.random() * accounts.length)];
+    debugLog(`Selected token from KV pool: ${randomAccount.email} (${accounts.length} accounts available)`);
+    return randomAccount.token;
+  } catch (error) {
+    console.error("Failed to get token from KV pool:", error);
+    return null;
+  }
+}
+
+// Initialize Deno KV database (for local storage)
 let kv: Deno.Kv;
 
 // Initialize database connection
@@ -1224,10 +1280,24 @@ async function handleChatCompletions(req: Request): Promise<Response> {
     },
   };
 
-  // Get auth token (priority: X-ZAI-Token header > env ZAI_TOKEN > anonymous)
+  // Get auth token (priority: X-ZAI-Token header > env ZAI_TOKEN > KV token pool > anonymous)
   const customZaiToken = req.headers.get("X-ZAI-Token");
   let authToken = customZaiToken || ZAI_TOKEN;
 
+  // If no token yet, try KV token pool
+  if (!authToken && KV_TOKEN_POOL_ENABLED) {
+    try {
+      const kvToken = await getTokenFromKVPool();
+      if (kvToken) {
+        authToken = kvToken;
+        debugLog("Token obtained from KV pool");
+      }
+    } catch (e) {
+      debugLog("Failed to get token from KV pool:", e);
+    }
+  }
+
+  // If still no token, try anonymous token
   if (!authToken && ANON_TOKEN_ENABLED) {
     try {
       authToken = await getAnonymousToken();
@@ -2957,13 +3027,24 @@ console.log(`🐛 Debug mode: ${DEBUG_MODE}`);
 console.log(`🌊 Default stream: ${DEFAULT_STREAM}`);
 console.log(`📊 Dashboard enabled: ${DASHBOARD_ENABLED}`);
 console.log(`🧠 Thinking enabled: ${ENABLE_THINKING}`);
+
+// Token strategy logging
+if (ZAI_TOKEN) {
+  console.log(`🔑 Token strategy: Fixed token (ZAI_TOKEN)`);
+} else if (KV_URL) {
+  console.log(`🔑 Token strategy: KV token pool (${KV_URL})`);
+} else {
+  console.log(`🔑 Token strategy: Anonymous token`);
+}
+
 if (DASHBOARD_ENABLED) {
   console.log(`📊 Dashboard: http://localhost:${PORT}/dashboard`);
 }
 console.log(`📖 API Docs: http://localhost:${PORT}/docs`);
 
-// Initialize database and start cleanup task
+// Initialize database and KV token pool
 await initDB();
+await initKVTokenPool();
 
 // Schedule daily stats aggregation and cleanup (runs every hour)
 setInterval(async () => {
