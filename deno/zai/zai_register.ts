@@ -10,8 +10,7 @@
  *
  * 数据存储: Deno KV (内置键值数据库)
  *
- * @author Your Name
- * @license MIT
+ * @author dext7r
  */
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
@@ -390,8 +389,9 @@ async function registerAccount(): Promise<boolean> {
 
     stats.failed++;
     return false;
-  } catch (error) {
-    broadcast({ type: 'log', level: 'error', message: `  ✗ 异常: ${error.message}` });
+  } catch (error: any) {
+    const msg = error instanceof Error ? error.message : String(error);
+    broadcast({ type: 'log', level: 'error', message: `  ✗ 异常: ${msg}` });
     stats.failed++;
     return false;
   }
@@ -491,6 +491,10 @@ const LOGIN_PAGE = `<!DOCTYPE html>
         <div class="mt-6 text-center text-sm text-gray-500">
             <p>默认账号: admin / 123456</p>
         </div>
+    <div class="mt-2 text-center text-sm text-gray-500">
+      <p>📦 <a href="https://github.com/dext7r/ZtoApi/tree/main/deno/zai/zai_register.ts" target="_blank" class="text-cyan-600 underline">源码地址 (GitHub)</a> |
+      💬 <a href="https://linux.do/t/topic/1009939" target="_blank" class="text-cyan-600 underline">交流讨论</a></p>
+    </div>
     </div>
 
     <script>
@@ -561,6 +565,8 @@ const HTML_PAGE = `<!DOCTYPE html>
                 <div class="flex-1 text-center">
                     <h1 class="text-4xl md:text-5xl font-bold mb-3">🤖 Z.AI 账号管理系统 V2</h1>
                     <p class="text-lg md:text-xl opacity-90">批量注册 · 数据管理 · 实时监控 · 高级设置</p>
+          <p class="text-sm mt-2 opacity-80">📦 <a href="https://github.com/dext7r/ZtoApi/tree/main/deno/zai/zai_register.ts" target="_blank" class="text-cyan-200 underline">源码地址 (GitHub)</a> |
+          💬 <a href="https://linux.do/t/topic/1009939" target="_blank" class="text-cyan-200 underline">交流讨论</a></p>
                 </div>
                 <div class="flex-1 flex justify-end">
                     <button id="logoutBtn" class="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white font-semibold transition">
@@ -1417,8 +1423,9 @@ async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ success: true }), {
         headers: { "Content-Type": "application/json" }
       });
-    } catch (error) {
-      return new Response(JSON.stringify({ success: false, error: error.message }), {
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return new Response(JSON.stringify({ success: false, error: msg }), {
         status: 500,
         headers: { "Content-Type": "application/json" }
       });
@@ -1481,8 +1488,9 @@ async function handler(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ success: true, imported, skipped }), {
         headers: { "Content-Type": "application/json" }
       });
-    } catch (error) {
-      return new Response(JSON.stringify({ success: false, error: error.message }), {
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return new Response(JSON.stringify({ success: false, error: msg }), {
         status: 500,
         headers: { "Content-Type": "application/json" }
       });
@@ -1535,3 +1543,11 @@ console.log(`🔐 登录账号: ${AUTH_USERNAME}`);
 console.log(`🔑 登录密码: ${AUTH_PASSWORD}`);
 console.log(`💡 访问 http://localhost:${PORT}/login 登录`);
 await serve(handler, { port: PORT });
+
+/*
+  📦 源码地址:
+  https://github.com/dext7r/ZtoApi/tree/main/deno/zai/zai_register.ts
+  |
+  💬 交流讨论: https://linux.do/t/topic/1009939
+──────────────────────────────────────────────────
+*/
