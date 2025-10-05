@@ -2890,6 +2890,168 @@ print(response.choices[0].message.content)</pre>
             </div>
         </div>
 
+        <div class="bg-white rounded-xl shadow-sm border p-8 mb-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">🔑 Token 管理策略</h2>
+            <p class="text-gray-700 mb-4">ZtoApi 支持三种 Token 管理策略，优先级从高到低：</p>
+
+            <div class="space-y-4 mb-6">
+                <div class="border-l-4 border-purple-500 bg-purple-50 p-4 rounded-r-lg">
+                    <h3 class="font-semibold text-purple-900 mb-2">1. 固定 Token（ZAI_TOKEN）</h3>
+                    <p class="text-gray-700 text-sm mb-2">适用于单一账号，稳定性高</p>
+                    <div class="bg-gray-900 rounded p-3">
+                        <code class="text-green-400 font-mono text-xs">export ZAI_TOKEN="your-fixed-token"</code>
+                    </div>
+                </div>
+
+                <div class="border-l-4 border-blue-500 bg-blue-50 p-4 rounded-r-lg">
+                    <h3 class="font-semibold text-blue-900 mb-2">2. KV Token Pool（KV_URL）⭐ 推荐</h3>
+                    <p class="text-gray-700 text-sm mb-2">从 Deno KV 数据库随机选择 token，支持多账号负载均衡</p>
+                    <div class="bg-gray-900 rounded p-3 mb-2">
+                        <code class="text-green-400 font-mono text-xs">export KV_URL="https://api.deno.com/databases/xxx/connect"</code>
+                    </div>
+                    <div class="flex items-start space-x-2 text-sm">
+                        <span class="text-green-600">✓</span>
+                        <span class="text-gray-600">多账号自动轮换</span>
+                    </div>
+                    <div class="flex items-start space-x-2 text-sm">
+                        <span class="text-green-600">✓</span>
+                        <span class="text-gray-600">单个账号失效不影响服务</span>
+                    </div>
+                    <div class="flex items-start space-x-2 text-sm">
+                        <span class="text-green-600">✓</span>
+                        <span class="text-gray-600">支持与 zai_register.ts 联动</span>
+                    </div>
+                </div>
+
+                <div class="border-l-4 border-gray-500 bg-gray-50 p-4 rounded-r-lg">
+                    <h3 class="font-semibold text-gray-900 mb-2">3. 匿名 Token（默认）</h3>
+                    <p class="text-gray-700 text-sm mb-2">每次请求自动获取临时 token</p>
+                    <div class="bg-gray-900 rounded p-3">
+                        <code class="text-green-400 font-mono text-xs"># 不设置任何环境变量即可</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border p-8 mb-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">🤖 KV Token Pool + zai_register 联动部署</h2>
+            <p class="text-gray-700 mb-4">通过 <code class="bg-gray-100 px-2 py-1 rounded">zai_register.ts</code> 批量注册 Z.ai 账号并存储到 Deno KV，然后让 <code class="bg-gray-100 px-2 py-1 rounded">main.ts</code> 从同一个 KV 读取 token 使用。</p>
+
+            <div class="mb-6">
+                <h3 class="font-semibold text-gray-900 mb-3">📋 部署步骤</h3>
+
+                <div class="space-y-4">
+                    <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                        <div class="flex items-center mb-2">
+                            <span class="bg-purple-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-2">1</span>
+                            <h4 class="font-semibold text-purple-900">部署账号注册器（zai_register.ts）</h4>
+                        </div>
+                        <p class="text-gray-700 text-sm mb-2">首先部署批量注册工具到 Deno Deploy：</p>
+                        <div class="bg-gray-900 rounded p-3 text-xs">
+                            <pre class="text-green-400 font-mono"># 克隆仓库
+git clone https://github.com/dext7r/ZtoApi.git
+cd ZtoApi/deno/zai
+
+# 部署到 Deno Deploy
+deno task deploy-register
+
+# 或者本地运行
+deno run --allow-net --allow-env --allow-read zai_register.ts</pre>
+                        </div>
+                        <p class="text-gray-600 text-sm mt-2">📌 访问 <code class="bg-white px-2 py-1 rounded">http://localhost:8001</code> 批量注册账号</p>
+                    </div>
+
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div class="flex items-center mb-2">
+                            <span class="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-2">2</span>
+                            <h4 class="font-semibold text-blue-900">获取 KV 数据库连接 URL</h4>
+                        </div>
+                        <p class="text-gray-700 text-sm mb-2">在 Deno Deploy Dashboard 中获取 KV 连接 URL：</p>
+                        <ol class="list-decimal list-inside text-sm text-gray-700 space-y-1 ml-4">
+                            <li>访问 <a href="https://dash.deno.com" target="_blank" class="text-blue-600 underline">https://dash.deno.com</a></li>
+                            <li>进入你的项目 → KV 数据库</li>
+                            <li>复制连接 URL，格式如下：</li>
+                        </ol>
+                        <div class="bg-gray-900 rounded p-3 text-xs mt-2">
+                            <code class="text-green-400 font-mono">https://api.deno.com/databases/3e00b51f-xxx/connect</code>
+                        </div>
+                    </div>
+
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div class="flex items-center mb-2">
+                            <span class="bg-green-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-2">3</span>
+                            <h4 class="font-semibold text-green-900">配置 main.ts 使用 KV Token Pool</h4>
+                        </div>
+                        <p class="text-gray-700 text-sm mb-2">在 main.ts 的环境变量中配置 KV_URL：</p>
+                        <div class="bg-gray-900 rounded p-3 text-xs">
+                            <pre class="text-green-400 font-mono"># .env.local 文件
+KV_URL=https://api.deno.com/databases/3e00b51f-xxx/connect
+
+# 或者在 Deno Deploy 环境变量中添加
+# 变量名: KV_URL
+# 变量值: https://api.deno.com/databases/3e00b51f-xxx/connect</pre>
+                        </div>
+                    </div>
+
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <div class="flex items-center mb-2">
+                            <span class="bg-yellow-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-2">4</span>
+                            <h4 class="font-semibold text-yellow-900">启动并验证</h4>
+                        </div>
+                        <p class="text-gray-700 text-sm mb-2">启动服务，查看日志确认 KV Token Pool 已启用：</p>
+                        <div class="bg-gray-900 rounded p-3 text-xs">
+                            <pre class="text-green-400 font-mono">deno task start
+
+# 查看日志输出
+🔑 Token strategy: KV token pool (https://api.deno.com/...)
+KV token pool initialized: https://api.deno.com/...
+Selected token from KV pool: xxx@domain.com (10 accounts available)</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                <h3 class="font-semibold text-indigo-900 mb-3">🎯 工作原理</h3>
+                <div class="space-y-2 text-sm text-gray-700">
+                    <div class="flex items-start">
+                        <span class="text-indigo-600 mr-2">1.</span>
+                        <span><code class="bg-white px-2 py-1 rounded">zai_register.ts</code> 批量注册账号并存储到 Deno KV 的 <code class="bg-white px-2 py-1 rounded">["zai_accounts", timestamp, email]</code> 键</span>
+                    </div>
+                    <div class="flex items-start">
+                        <span class="text-indigo-600 mr-2">2.</span>
+                        <span><code class="bg-white px-2 py-1 rounded">main.ts</code> 从同一个 KV 读取所有账号列表</span>
+                    </div>
+                    <div class="flex items-start">
+                        <span class="text-indigo-600 mr-2">3.</span>
+                        <span>每次 API 请求随机选择一个 token 使用，实现负载均衡</span>
+                    </div>
+                    <div class="flex items-start">
+                        <span class="text-indigo-600 mr-2">4.</span>
+                        <span>单个账号失效不影响整体服务，其他账号继续工作</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-4">
+                <h3 class="font-semibold text-gray-900 mb-2">📚 相关资源</h3>
+                <div class="space-y-2 text-sm">
+                    <div class="flex items-center">
+                        <span class="text-purple-600 mr-2">📄</span>
+                        <a href="https://github.com/dext7r/ZtoApi/tree/main/deno/zai/zai_register.ts" target="_blank" class="text-blue-600 hover:underline">zai_register.ts 源码</a>
+                    </div>
+                    <div class="flex items-center">
+                        <span class="text-purple-600 mr-2">📖</span>
+                        <a href="https://github.com/dext7r/ZtoApi/blob/main/deno/zai/zai_register.md" target="_blank" class="text-blue-600 hover:underline">zai_register 使用文档</a>
+                    </div>
+                    <div class="flex items-center">
+                        <span class="text-purple-600 mr-2">🌐</span>
+                        <a href="https://docs.deno.com/deploy/kv/manual" target="_blank" class="text-blue-600 hover:underline">Deno KV 官方文档</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="text-center">
             <a href="/" class="inline-block bg-purple-600 hover:bg-purple-700 text-white font-semibold px-6 py-3 rounded-lg transition">
                 返回首页
